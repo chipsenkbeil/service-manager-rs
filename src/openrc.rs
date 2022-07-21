@@ -115,21 +115,21 @@ fn service_dir_path() -> PathBuf {
 }
 
 fn make_script(description: &str, provide: &str, program: &str, args: Vec<String>) -> String {
+    let args = args.join(" ");
     format!(
         r#"
 #!/sbin/openrc-run
 
 description="{description}"
-command="${{DISTANT_BINARY:-"{program}"}}"
-command_args="{}"
+command="{program}"
+command_args="{args}"
 pidfile="/run/${{RC_SVCNAME}}.pid"
 command_background=true
 
 depend() {{
     provide {provide}
 }}
-    "#,
-        args.join(" "),
+    "#
     )
     .trim()
     .to_string()
