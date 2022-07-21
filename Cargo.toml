@@ -1,13 +1,13 @@
 [package]
-name = "service-management"
+name = "service-manager"
 description = "Provides adapters to communicate with various operating system service managers"
 categories = ["config"]
 keywords = ["generator"]
 version = "0.1.0"
 authors = ["Chip Senkbeil <chip@senkbeil.org>"]
 edition = "2021"
-homepage = "https://github.com/chipsenkbeil/service-management-rs"
-repository = "https://github.com/chipsenkbeil/service-management-rs"
+homepage = "https://github.com/chipsenkbeil/service-manager-rs"
+repository = "https://github.com/chipsenkbeil/service-manager-rs"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 
