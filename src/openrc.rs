@@ -1,5 +1,6 @@
 use super::{
-    ServiceInstallCtx, ServiceManager, ServiceStartCtx, ServiceStopCtx, ServiceUninstallCtx,
+    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
+    ServiceUninstallCtx,
 };
 use std::{
     fs::OpenOptions,
@@ -12,13 +13,26 @@ use std::{
 static RC_SERVICE: &str = "rc-service";
 static RC_UPDATE: &str = "rc-update";
 
+/// Configuration settings tied to OpenRC services
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OpenRcConfig {}
+
 /// Implementation of [`ServiceManager`] for Linux's [OpenRC](https://en.wikipedia.org/wiki/OpenRC)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct OpenRcServiceManager;
+pub struct OpenRcServiceManager {
+    /// Configuration settings tied to OpenRC services
+    pub config: OpenRcConfig,
+}
 
 impl OpenRcServiceManager {
-    pub fn new() -> Self {
+    /// Creates a new manager instance working with system services
+    pub fn system() -> Self {
         Self::default()
+    }
+
+    /// Update manager to use the specified config
+    pub fn with_config(self, config: OpenRcConfig) -> Self {
+        Self { config }
     }
 }
 
@@ -30,16 +44,6 @@ impl ServiceManager for OpenRcServiceManager {
     }
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
-        // NOTE: OpenRC does not support user-level services
-        //
-        // For more discussion, see: https://github.com/OpenRC/openrc/issues/432
-        if ctx.user {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "User-level services not supported for OpenRC",
-            ));
-        }
-
         let dir_path = service_dir_path();
         std::fs::create_dir_all(&dir_path)?;
 
@@ -76,6 +80,20 @@ impl ServiceManager for OpenRcServiceManager {
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
         rc_service("stop", &ctx.label.to_script_name())
+    }
+
+    fn level(&self) -> ServiceLevel {
+        ServiceLevel::System
+    }
+
+    fn set_level(&mut self, level: ServiceLevel) -> io::Result<()> {
+        match level {
+            ServiceLevel::System => Ok(()),
+            ServiceLevel::User => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "OpenRC does not support user-level services",
+            )),
+        }
     }
 }
 

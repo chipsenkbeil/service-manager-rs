@@ -1,26 +1,67 @@
 use super::{
-    ServiceInstallCtx, ServiceManager, ServiceStartCtx, ServiceStopCtx, ServiceUninstallCtx,
+    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
+    ServiceUninstallCtx,
 };
 use std::{io, path::PathBuf, process::Command};
 
 static LAUNCHCTL: &str = "launchctl";
 
-/// Implementation of [`ServiceManager`] for MacOS's [Launchd](https://en.wikipedia.org/wiki/Launchd)
+/// Configuration settings tied to launchd services
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LaunchdServiceManager {
+pub struct LaunchdConfig {
     /// If true, calls to install service will include `KeepAlive` flag set to true
     pub keep_alive: bool,
 }
 
-impl LaunchdServiceManager {
-    pub fn new() -> Self {
-        Self::default()
+impl Default for LaunchdConfig {
+    fn default() -> Self {
+        Self { keep_alive: true }
     }
 }
 
-impl Default for LaunchdServiceManager {
-    fn default() -> Self {
-        Self { keep_alive: true }
+/// Implementation of [`ServiceManager`] for MacOS's [Launchd](https://en.wikipedia.org/wiki/Launchd)
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LaunchdServiceManager {
+    /// Whether or not this manager is operating at the user-level
+    pub user: bool,
+
+    /// Configuration settings tied to launchd services
+    pub config: LaunchdConfig,
+}
+
+impl LaunchdServiceManager {
+    /// Creates a new manager instance working with system services
+    pub fn system() -> Self {
+        Self::default()
+    }
+
+    /// Creates a new manager instance working with user services
+    pub fn user() -> Self {
+        Self::default().into_user()
+    }
+
+    /// Change manager to work with system services
+    pub fn into_system(self) -> Self {
+        Self {
+            config: self.config,
+            user: false,
+        }
+    }
+
+    /// Change manager to work with user services
+    pub fn into_user(self) -> Self {
+        Self {
+            config: self.config,
+            user: true,
+        }
+    }
+
+    /// Update manager to use the specified config
+    pub fn with_config(self, config: LaunchdConfig) -> Self {
+        Self {
+            config,
+            user: self.user,
+        }
     }
 }
 
@@ -31,12 +72,8 @@ impl ServiceManager for LaunchdServiceManager {
             .map_err(|x| io::Error::new(io::ErrorKind::NotFound, x))
     }
 
-    fn supports_user_level_service(&self) -> bool {
-        true
-    }
-
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
-        let dir_path = if ctx.user {
+        let dir_path = if self.user {
             user_agent_dir_path()?
         } else {
             global_daemon_dir_path()
@@ -46,14 +83,14 @@ impl ServiceManager for LaunchdServiceManager {
 
         let qualified_name = ctx.label.to_qualified_name();
         let plist_path = dir_path.join(format!("{}.plist", qualified_name));
-        let plist = make_plist(&qualified_name, ctx.cmd_iter(), self.keep_alive);
+        let plist = make_plist(&self.config, &qualified_name, ctx.cmd_iter());
         std::fs::write(plist_path.as_path(), plist)?;
 
         launchctl("load", plist_path.to_string_lossy().as_ref())
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
-        let dir_path = if ctx.user {
+        let dir_path = if self.user {
             user_agent_dir_path()?
         } else {
             global_daemon_dir_path()
@@ -71,6 +108,23 @@ impl ServiceManager for LaunchdServiceManager {
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
         launchctl("stop", &ctx.label.to_qualified_name())
+    }
+
+    fn level(&self) -> ServiceLevel {
+        if self.user {
+            ServiceLevel::User
+        } else {
+            ServiceLevel::System
+        }
+    }
+
+    fn set_level(&mut self, level: ServiceLevel) -> io::Result<()> {
+        match level {
+            ServiceLevel::System => self.user = false,
+            ServiceLevel::User => self.user = true,
+        }
+
+        Ok(())
     }
 }
 
@@ -101,7 +155,12 @@ fn user_agent_dir_path() -> io::Result<PathBuf> {
         .join("LaunchAgents"))
 }
 
-fn make_plist<'a>(label: &str, args: impl Iterator<Item = &'a str>, keep_alive: bool) -> String {
+fn make_plist<'a>(
+    config: &LaunchdConfig,
+    label: &str,
+    args: impl Iterator<Item = &'a str>,
+) -> String {
+    let LaunchdConfig { keep_alive } = config;
     let args = args
         .map(|arg| format!("<string>{arg}</string>"))
         .collect::<Vec<String>>()

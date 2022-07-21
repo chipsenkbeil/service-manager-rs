@@ -11,6 +11,9 @@ mod openrc;
 #[cfg(unix)]
 mod rc;
 
+#[cfg(unix)]
+mod systemd;
+
 pub use kind::ServiceManagerKind;
 
 #[cfg(target_os = "macos")]
@@ -22,16 +25,14 @@ pub use openrc::OpenRcServiceManager;
 #[cfg(unix)]
 pub use rc::RcServiceManager;
 
+#[cfg(unix)]
+pub use systemd::SystemdServiceManager;
+
 /// Interface for a service manager
 pub trait ServiceManager {
     /// Determines if the service manager exists (e.g. is `launchd` available on the system?) and
     /// can be used
     fn available(&self) -> io::Result<bool>;
-
-    /// Returns whether or not the service manager supports user-level services
-    fn supports_user_level_service(&self) -> bool {
-        false
-    }
 
     /// Installs a new service using the manager
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()>;
@@ -44,6 +45,12 @@ pub trait ServiceManager {
 
     /// Stops a running service using the manager
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()>;
+
+    /// Returns the current target level for the manager
+    fn level(&self) -> ServiceLevel;
+
+    /// Sets the target level for the manager
+    fn set_level(&mut self, level: ServiceLevel) -> io::Result<()>;
 }
 
 impl dyn ServiceManager {
@@ -82,46 +89,53 @@ impl dyn ServiceManager {
     /// * For BSD variants, this will use [`RcServiceManager`]
     /// * For Linux variants, this will use either [`SystemdServiceManager`] or [`OpenRcServiceManager`]
     pub fn native_target() -> io::Result<Box<dyn ServiceManager>> {
-        #[cfg(target_os = "macos")]
-        fn native_target_kind() -> io::Result<ServiceManagerKind> {
-            Ok(ServiceManagerKind::Launchd)
-        }
-
-        #[cfg(target_os = "windows")]
-        fn native_target_kind() -> io::Result<ServiceManagerKind> {
-            Ok(ServiceManagerKind::Sc)
-        }
-
-        #[cfg(any(
-            target_os = "freebsd",
-            target_os = "dragonfly",
-            target_os = "openbsd",
-            target_os = "netbsd"
-        ))]
-        fn native_target_kind() -> io::Result<ServiceManagerKind> {
-            Ok(ServiceManagerKind::Rc)
-        }
-
-        #[cfg(target_os = "linux")]
-        fn native_target_kind() -> io::Result<ServiceManagerKind> {
-            let service = <dyn ServiceManager>::target(ServiceManagerKind::Systemd);
-            if let Ok(true) = service.available() {
-                return Ok(ServiceManagerKind::Systemd);
-            }
-
-            let service = <dyn ServiceManager>::target(ServiceManagerKind::OpenRc);
-            if let Ok(true) = service.available() {
-                return Ok(ServiceManagerKind::OpenRc);
-            }
-
-            Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "Only systemd and openrc are supported on Linux",
-            ))
-        }
-
-        Ok(Self::target(native_target_kind()?))
+        Ok(Self::target(Self::native_target_kind()?))
     }
+
+    #[cfg(target_os = "macos")]
+    pub fn native_target_kind() -> io::Result<ServiceManagerKind> {
+        Ok(ServiceManagerKind::Launchd)
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn native_target_kind() -> io::Result<ServiceManagerKind> {
+        Ok(ServiceManagerKind::Sc)
+    }
+
+    #[cfg(any(
+        target_os = "freebsd",
+        target_os = "dragonfly",
+        target_os = "openbsd",
+        target_os = "netbsd"
+    ))]
+    pub fn native_target_kind() -> io::Result<ServiceManagerKind> {
+        Ok(ServiceManagerKind::Rc)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn native_target_kind() -> io::Result<ServiceManagerKind> {
+        let service = <dyn ServiceManager>::target(ServiceManagerKind::Systemd);
+        if let Ok(true) = service.available() {
+            return Ok(ServiceManagerKind::Systemd);
+        }
+
+        let service = <dyn ServiceManager>::target(ServiceManagerKind::OpenRc);
+        if let Ok(true) = service.available() {
+            return Ok(ServiceManagerKind::OpenRc);
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Only systemd and openrc are supported on Linux",
+        ))
+    }
+}
+
+/// Represents whether a service is system-wide or user-level
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ServiceLevel {
+    System,
+    User,
 }
 
 /// Label describing the service (e.g. `org.example.my_application`
@@ -201,9 +215,6 @@ pub struct ServiceInstallCtx {
     /// E.g. `org.example.my_application`
     pub label: ServiceLabel,
 
-    /// Whether or not this service is at the user-level
-    pub user: bool,
-
     /// Path to the program to run
     ///
     /// E.g. `/usr/local/bin/my-program`
@@ -233,9 +244,6 @@ pub struct ServiceUninstallCtx {
     ///
     /// E.g. `rocks.distant.manager`
     pub label: ServiceLabel,
-
-    /// Whether or not this service is at the user-level
-    pub user: bool,
 }
 
 /// Context provided to the start function of [`ServiceManager`]

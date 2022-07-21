@@ -1,5 +1,6 @@
 use super::{
-    ServiceInstallCtx, ServiceManager, ServiceStartCtx, ServiceStopCtx, ServiceUninstallCtx,
+    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
+    ServiceUninstallCtx,
 };
 use std::{
     fs::OpenOptions,
@@ -9,13 +10,26 @@ use std::{
     process::Command,
 };
 
+/// Configuration settings tied to rc.d services
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RcConfig {}
+
 /// Implementation of [`ServiceManager`] for FreeBSD's [rc.d](https://en.wikipedia.org/wiki/Init#Research_Unix-style/BSD-style)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RcServiceManager;
+pub struct RcServiceManager {
+    /// Configuration settings tied to rc.d services
+    pub config: RcConfig,
+}
 
 impl RcServiceManager {
-    pub fn new() -> Self {
+    /// Creates a new manager instance working with system services
+    pub fn system() -> Self {
         Self::default()
+    }
+
+    /// Update manager to use the specified config
+    pub fn with_config(self, config: RcConfig) -> Self {
+        Self { config }
     }
 }
 
@@ -29,14 +43,6 @@ impl ServiceManager for RcServiceManager {
     }
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
-        // NOTE: rc.d does not support user-level services
-        if ctx.user {
-            return Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "User-level services not supported for rc.d",
-            ));
-        }
-
         let service = ctx.label.to_script_name();
         let script = make_script(&service, &service, ctx.program.as_str(), ctx.args);
 
@@ -76,6 +82,20 @@ impl ServiceManager for RcServiceManager {
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
         let service = ctx.label.to_script_name();
         rc_d_script("stop", &service)
+    }
+
+    fn level(&self) -> ServiceLevel {
+        ServiceLevel::System
+    }
+
+    fn set_level(&mut self, level: ServiceLevel) -> io::Result<()> {
+        match level {
+            ServiceLevel::System => Ok(()),
+            ServiceLevel::User => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "rc.d does not support user-level services",
+            )),
+        }
     }
 }
 
