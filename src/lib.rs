@@ -9,7 +9,7 @@ mod launchd;
 mod openrc;
 
 #[cfg(unix)]
-mod rc;
+mod rcd;
 
 #[cfg(unix)]
 mod systemd;
@@ -23,7 +23,7 @@ pub use launchd::LaunchdServiceManager;
 pub use openrc::OpenRcServiceManager;
 
 #[cfg(unix)]
-pub use rc::RcServiceManager;
+pub use rcd::RcdServiceManager;
 
 #[cfg(unix)]
 pub use systemd::SystemdServiceManager;
@@ -74,7 +74,7 @@ impl dyn ServiceManager {
             #[cfg(unix)]
             ServiceManagerKind::OpenRc => Box::new(openrc::OpenRcServiceManager::default()),
             #[cfg(unix)]
-            ServiceManagerKind::Rc => Box::new(rc::RcServiceManager::default()),
+            ServiceManagerKind::Rcd => Box::new(rcd::RcdServiceManager::default()),
             #[cfg(windows)]
             ServiceManagerKind::Sc => todo!(),
             #[cfg(unix)]
@@ -86,7 +86,7 @@ impl dyn ServiceManager {
     ///
     /// * For MacOS, this will use [`LaunchdServiceManager`]
     /// * For Windows, this will use [`ScServiceManager`]
-    /// * For BSD variants, this will use [`RcServiceManager`]
+    /// * For BSD variants, this will use [`RcdServiceManager`]
     /// * For Linux variants, this will use either [`SystemdServiceManager`] or [`OpenRcServiceManager`]
     pub fn native_target() -> io::Result<Box<dyn ServiceManager>> {
         Ok(Self::target(Self::native_target_kind()?))
@@ -109,7 +109,7 @@ impl dyn ServiceManager {
         target_os = "netbsd"
     ))]
     pub fn native_target_kind() -> io::Result<ServiceManagerKind> {
-        Ok(ServiceManagerKind::Rc)
+        Ok(ServiceManagerKind::Rcd)
     }
 
     #[cfg(target_os = "linux")]

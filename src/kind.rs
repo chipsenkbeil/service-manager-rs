@@ -13,9 +13,9 @@ pub enum ServiceManagerKind {
     #[cfg(unix)]
     OpenRc,
 
-    /// Use rc to manage the service
+    /// Use rc.d to manage the service
     #[cfg(unix)]
-    Rc,
+    Rcd,
 
     /// Use Windows service controller to manage the service
     #[cfg(windows)]

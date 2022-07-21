@@ -12,28 +12,28 @@ use std::{
 
 /// Configuration settings tied to rc.d services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RcConfig {}
+pub struct RcdConfig {}
 
 /// Implementation of [`ServiceManager`] for FreeBSD's [rc.d](https://en.wikipedia.org/wiki/Init#Research_Unix-style/BSD-style)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RcServiceManager {
+pub struct RcdServiceManager {
     /// Configuration settings tied to rc.d services
-    pub config: RcConfig,
+    pub config: RcdConfig,
 }
 
-impl RcServiceManager {
+impl RcdServiceManager {
     /// Creates a new manager instance working with system services
     pub fn system() -> Self {
         Self::default()
     }
 
     /// Update manager to use the specified config
-    pub fn with_config(self, config: RcConfig) -> Self {
+    pub fn with_config(self, config: RcdConfig) -> Self {
         Self { config }
     }
 }
 
-impl ServiceManager for RcServiceManager {
+impl ServiceManager for RcdServiceManager {
     fn available(&self) -> io::Result<bool> {
         match std::fs::metadata(service_dir_path()) {
             Ok(_) => Ok(true),
