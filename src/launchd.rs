@@ -7,13 +7,19 @@ use std::{io, path::PathBuf, process::Command};
 static LAUNCHCTL: &str = "launchctl";
 
 /// Configuration settings tied to launchd services
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LaunchdConfig {
-    /// If true, calls to install service will include `KeepAlive` flag set to true
+    pub install: LaunchdInstallConfig,
+}
+
+/// Configuration settings tied to launchd services during installation
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LaunchdInstallConfig {
+    /// If true, will include `KeepAlive` flag set to true
     pub keep_alive: bool,
 }
 
-impl Default for LaunchdConfig {
+impl Default for LaunchdInstallConfig {
     fn default() -> Self {
         Self { keep_alive: true }
     }
@@ -83,7 +89,7 @@ impl ServiceManager for LaunchdServiceManager {
 
         let qualified_name = ctx.label.to_qualified_name();
         let plist_path = dir_path.join(format!("{}.plist", qualified_name));
-        let plist = make_plist(&self.config, &qualified_name, ctx.cmd_iter());
+        let plist = make_plist(&self.config.install, &qualified_name, ctx.cmd_iter());
         std::fs::write(plist_path.as_path(), plist)?;
 
         launchctl("load", plist_path.to_string_lossy().as_ref())
@@ -156,11 +162,11 @@ fn user_agent_dir_path() -> io::Result<PathBuf> {
 }
 
 fn make_plist<'a>(
-    config: &LaunchdConfig,
+    config: &LaunchdInstallConfig,
     label: &str,
     args: impl Iterator<Item = &'a str>,
 ) -> String {
-    let LaunchdConfig { keep_alive } = config;
+    let LaunchdInstallConfig { keep_alive } = config;
     let args = args
         .map(|arg| format!("<string>{arg}</string>"))
         .collect::<Vec<String>>()
