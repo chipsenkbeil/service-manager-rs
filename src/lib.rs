@@ -11,6 +11,9 @@ mod openrc;
 #[cfg(unix)]
 mod rcd;
 
+#[cfg(windows)]
+mod sc;
+
 #[cfg(unix)]
 mod systemd;
 
@@ -24,6 +27,9 @@ pub use openrc::OpenRcServiceManager;
 
 #[cfg(unix)]
 pub use rcd::RcdServiceManager;
+
+#[cfg(windows)]
+pub use sc::ScServiceManager;
 
 #[cfg(unix)]
 pub use systemd::SystemdServiceManager;
@@ -76,9 +82,9 @@ impl dyn ServiceManager {
             #[cfg(unix)]
             ServiceManagerKind::Rcd => Box::new(rcd::RcdServiceManager::default()),
             #[cfg(windows)]
-            ServiceManagerKind::Sc => todo!(),
+            ServiceManagerKind::Sc => Box::new(sc::ScServiceManager::default()),
             #[cfg(unix)]
-            ServiceManagerKind::Systemd => todo!(),
+            ServiceManagerKind::Systemd => Box::new(systemd::SystemdServiceManager::default()),
         }
     }
 
