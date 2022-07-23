@@ -4,7 +4,11 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     path::PathBuf,
     thread,
+    time::{Duration, Instant},
 };
+
+/// Timeout for talking to a server
+const TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 struct Logger {
@@ -80,32 +84,49 @@ impl Cli {
     pub fn run(self) -> io::Result<()> {
         match self.action {
             Action::Talk { addr, msg } => {
-                let mut stream = TcpStream::connect(addr)?;
-                stream.write_all(msg.as_bytes())?;
+                let handle: thread::JoinHandle<io::Result<Vec<u8>>> = thread::spawn(move || {
+                    let mut stream = TcpStream::connect(addr)?;
+                    stream.write_all(msg.as_bytes())?;
 
-                let mut remaining = msg.len();
-                let mut bytes = Vec::new();
-                let mut buf = [0u8; 128];
-                loop {
-                    match stream.read(&mut buf) {
-                        Ok(n) if n > 0 => {
-                            bytes.extend(&buf[..n]);
-                            if remaining <= n {
-                                break;
-                            } else {
-                                remaining -= n;
+                    let mut remaining = msg.len();
+                    let mut bytes = Vec::new();
+                    let mut buf = [0u8; 128];
+                    loop {
+                        match stream.read(&mut buf) {
+                            Ok(n) if n > 0 => {
+                                bytes.extend(&buf[..n]);
+                                if remaining <= n {
+                                    break;
+                                } else {
+                                    remaining -= n;
+                                }
                             }
+                            Ok(_) => {
+                                eprintln!("Connection {addr} closed unexpectedly");
+                                break;
+                            }
+                            Err(x) => eprintln!("Connection {addr} terminated: {x}"),
                         }
-                        Ok(_) => {
-                            eprintln!("Connection {addr} closed unexpectedly");
-                            break;
-                        }
-                        Err(x) => eprintln!("Connection {addr} terminated: {x}"),
                     }
+
+                    Ok(bytes)
+                });
+
+                let start = Instant::now();
+                while start.elapsed() < TIMEOUT {
+                    if handle.is_finished() {
+                        let bytes = handle.join().unwrap()?;
+                        println!("{}", String::from_utf8_lossy(&bytes));
+                        return Ok(());
+                    }
+
+                    thread::sleep(Duration::from_millis(100));
                 }
 
-                println!("{}", String::from_utf8_lossy(&bytes));
-                Ok(())
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("No response received in {}s", TIMEOUT.as_secs()),
+                ))
             }
 
             Action::Listen { addr, log_file } => {

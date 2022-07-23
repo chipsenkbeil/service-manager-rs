@@ -16,11 +16,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { rust: stable, os: ubuntu-latest, cargo: cargo, manager: systemd, test: systemd_for_user }
-          - { rust: stable, os: ubuntu-latest, cargo: /home/runner/.cargo/bin/cargo, manager: systemd, test: systemd_for_system, elevated: sudo }
-          - { rust: stable, os: macos-latest, cargo: cargo, manager: launchd, test: launchd_for_user }
-          - { rust: stable, os: macos-latest, cargo: cargo, manager: launchd, test: launchd_for_system, elevated: sudo }
-          - { rust: stable, os: windows-latest, cargo: cargo, manager: sc, test: sc_for_system }
+          - { rust: stable, os: ubuntu-latest, manager: systemd, test: systemd_for_user }
+          - { rust: stable, os: ubuntu-latest, manager: systemd, test: systemd_for_system, elevated: sudo env PATH="$PATH" }
+          - { rust: stable, os: macos-latest, manager: launchd, test: launchd_for_user }
+          - { rust: stable, os: macos-latest, manager: launchd, test: launchd_for_system, elevated: sudo }
+          - { rust: stable, os: windows-latest, manager: sc, test: sc_for_system }
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust ${{ matrix.rust }}
@@ -30,7 +30,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v1
       - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
-        run: ${{ matrix.elevated }} ${{ matrix.cargo }} test -p system-tests ${{ matrix.test }}
+        run: |
+          ${{ matrix.elevated }} rustup default stable
+          ${{ matrix.elevated }} cargo test -p system-tests ${{ matrix.test }} -- --nocapture
   test-freebsd:
     name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (FreeBSD)"
     runs-on: macos-12
@@ -48,11 +50,11 @@ jobs:
           prepare: pkg install -y curl && curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
           run: |
             . "$HOME/.cargo/env"
-            cargo test -p system-tests ${{ matrix.test }}
-  test-alpine:
+            cargo test -p system-tests ${{ matrix.test }} -- --nocapture
+  test-alpine-openrc:
     name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (Alpine Linux)"
     runs-on: ubuntu-latest
-    container: alpine:3.16-openrc
+    container: dockage/alpine:3.16-openrc
     strategy:
       fail-fast: false
       matrix:
@@ -64,7 +66,9 @@ jobs:
         run: apk add --update --no-cache build-base libc6-compat curl sudo
       - name: Configure passwordless sudo
         run: echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
-      - name: Install stable toolchain using sudo
-        run: sudo --preserve-env curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+      - name: Install stable toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
       - name: Run ${{ matrix.test }} for ${{ matrix.manager }} using sudo
-        run: sudo --preserve-env cargo test -p system-tests ${{ matrix.test }}
+        run: |
+          . "$HOME/.cargo/env"
+          sudo --preserve-env cargo test -p system-tests ${{ matrix.test }} -- --nocapture
