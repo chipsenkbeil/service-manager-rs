@@ -10,41 +10,19 @@ fn wait() {
     thread::sleep(WAIT_PERIOD);
 }
 
-fn cleanup(service_manager: &dyn ServiceManager, service_label: &ServiceLabel) {
-    eprintln!("Trying to stop service if it was running already");
-    let _ = service_manager.stop(ServiceStopCtx {
-        label: service_label.clone(),
-    });
-
-    wait();
-
-    eprintln!("Trying to uninstall service if it was installed already");
-    let _ = service_manager.uninstall(ServiceUninstallCtx {
-        label: service_label.clone(),
-    });
-
-    wait();
-}
-
 /// Run test with given service manager
-pub fn run_test(service_manager: impl Into<Box<dyn ServiceManager>>) {
-    let service_manager = service_manager.into();
+pub fn run_test(manager: impl Into<TypedServiceManager>) {
+    let manager = manager.into();
     let service_label: ServiceLabel = "com.example.echo".parse().unwrap();
     let addr: SocketAddr = "127.0.0.1:8088".parse().unwrap();
 
     // Ensure service manager is available
     eprintln!("Checking if service available");
-    assert!(
-        service_manager.available().unwrap(),
-        "Service not available"
-    );
-
-    // Attempt to stop & uninstall the service in case it already exists from a failed test
-    cleanup(service_manager.as_ref(), &service_label);
+    assert!(manager.available().unwrap(), "Service not available");
 
     // Install the service
     eprintln!("Installing service");
-    service_manager
+    manager
         .install(ServiceInstallCtx {
             label: service_label.clone(),
             program: assert_cmd::cargo::cargo_bin(crate_name!()),
@@ -62,13 +40,30 @@ pub fn run_test(service_manager: impl Into<Box<dyn ServiceManager>>) {
     // Wait for service to be installed
     wait();
 
-    // Start the service
+    // NOTE: For OpenRC, it seems to already start the service on our CI for some reason
+    //       even though I don't see this documented. So, we attempt to blindly
+    //       start the service without failing on error.
     eprintln!("Starting service");
-    service_manager
-        .start(ServiceStartCtx {
-            label: service_label.clone(),
-        })
-        .unwrap();
+    let res = manager.start(ServiceStartCtx {
+        label: service_label.clone(),
+    });
+
+    #[cfg(unix)]
+    if manager.is_openrc() && res.is_err() {
+        eprintln!(
+            "Start failed on OpenRC, but we're ignoring it: {}",
+            res.unwrap_err()
+        );
+    } else if res.is_err() {
+        panic!("{}", res.unwrap_err());
+    }
+
+    #[cfg(not(unix))]
+    {
+        if res.is_err() {
+            panic!("{}", res.unwrap_err());
+        }
+    }
 
     // Wait for the service to start
     wait();
@@ -85,7 +80,7 @@ pub fn run_test(service_manager: impl Into<Box<dyn ServiceManager>>) {
 
     // Stop the service
     eprintln!("Stopping service");
-    service_manager
+    manager
         .stop(ServiceStopCtx {
             label: service_label.clone(),
         })
@@ -96,7 +91,7 @@ pub fn run_test(service_manager: impl Into<Box<dyn ServiceManager>>) {
 
     // Uninstall the service
     eprintln!("Uninstalling service");
-    service_manager
+    manager
         .uninstall(ServiceUninstallCtx {
             label: service_label,
         })

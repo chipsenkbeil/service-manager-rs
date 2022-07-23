@@ -6,6 +6,7 @@ use std::{
 };
 
 mod kind;
+mod typed;
 
 #[cfg(target_os = "macos")]
 mod launchd;
@@ -23,6 +24,7 @@ mod sc;
 mod systemd;
 
 pub use kind::ServiceManagerKind;
+pub use typed::TypedServiceManager;
 
 #[cfg(target_os = "macos")]
 pub use launchd::LaunchdServiceManager;
@@ -66,79 +68,27 @@ pub trait ServiceManager {
 
 impl dyn ServiceManager {
     /// Creates a new service using the specified type, falling back to selecting
-    /// based on native targeting for the current operating system if no type provided
+    /// based on native service manager for the current operating system if no type provided
     pub fn target_or_native(
         kind: impl Into<Option<ServiceManagerKind>>,
     ) -> io::Result<Box<dyn ServiceManager>> {
-        match kind.into() {
-            Some(kind) => Ok(<dyn ServiceManager>::target(kind)),
-            None => <dyn ServiceManager>::native_target(),
-        }
+        Ok(TypedServiceManager::target_or_native(kind)?.into_box())
     }
 
     /// Creates a new service manager targeting the specific service manager kind using the
     /// default service manager instance
     pub fn target(kind: ServiceManagerKind) -> Box<dyn ServiceManager> {
-        match kind {
-            #[cfg(target_os = "macos")]
-            ServiceManagerKind::Launchd => Box::new(launchd::LaunchdServiceManager::default()),
-            #[cfg(unix)]
-            ServiceManagerKind::OpenRc => Box::new(openrc::OpenRcServiceManager::default()),
-            #[cfg(unix)]
-            ServiceManagerKind::Rcd => Box::new(rcd::RcdServiceManager::default()),
-            #[cfg(windows)]
-            ServiceManagerKind::Sc => Box::new(sc::ScServiceManager::default()),
-            #[cfg(unix)]
-            ServiceManagerKind::Systemd => Box::new(systemd::SystemdServiceManager::default()),
-        }
+        TypedServiceManager::target(kind).into_box()
     }
 
-    /// Attempts to select a native target for the current operating system
+    /// Attempts to select a native service manager for the current operating system
     ///
     /// * For MacOS, this will use [`LaunchdServiceManager`]
     /// * For Windows, this will use [`ScServiceManager`]
     /// * For BSD variants, this will use [`RcdServiceManager`]
     /// * For Linux variants, this will use either [`SystemdServiceManager`] or [`OpenRcServiceManager`]
-    pub fn native_target() -> io::Result<Box<dyn ServiceManager>> {
-        Ok(Self::target(Self::native_target_kind()?))
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn native_target_kind() -> io::Result<ServiceManagerKind> {
-        Ok(ServiceManagerKind::Launchd)
-    }
-
-    #[cfg(target_os = "windows")]
-    pub fn native_target_kind() -> io::Result<ServiceManagerKind> {
-        Ok(ServiceManagerKind::Sc)
-    }
-
-    #[cfg(any(
-        target_os = "freebsd",
-        target_os = "dragonfly",
-        target_os = "openbsd",
-        target_os = "netbsd"
-    ))]
-    pub fn native_target_kind() -> io::Result<ServiceManagerKind> {
-        Ok(ServiceManagerKind::Rcd)
-    }
-
-    #[cfg(target_os = "linux")]
-    pub fn native_target_kind() -> io::Result<ServiceManagerKind> {
-        let service = <dyn ServiceManager>::target(ServiceManagerKind::Systemd);
-        if let Ok(true) = service.available() {
-            return Ok(ServiceManagerKind::Systemd);
-        }
-
-        let service = <dyn ServiceManager>::target(ServiceManagerKind::OpenRc);
-        if let Ok(true) = service.available() {
-            return Ok(ServiceManagerKind::OpenRc);
-        }
-
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "Only systemd and openrc are supported on Linux",
-        ))
+    pub fn native() -> io::Result<Box<dyn ServiceManager>> {
+        Ok(TypedServiceManager::native()?.into_box())
     }
 }
 
