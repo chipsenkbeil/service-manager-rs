@@ -137,6 +137,15 @@ impl dyn ServiceManager {
     }
 }
 
+impl<'a, S> From<S> for Box<dyn ServiceManager + 'a>
+where
+    S: ServiceManager + 'a,
+{
+    fn from(service_manager: S) -> Self {
+        Box::new(service_manager)
+    }
+}
+
 /// Represents whether a service is system-wide or user-level
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ServiceLevel {

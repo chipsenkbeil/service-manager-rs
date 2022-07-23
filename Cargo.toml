@@ -11,6 +11,9 @@ repository = "https://github.com/chipsenkbeil/service-manager-rs"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 
+[workspace]
+members = ["system-tests"]
+
 [dependencies]
 dirs = "4.0"
 which = "4.0"
