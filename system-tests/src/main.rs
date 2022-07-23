@@ -12,8 +12,16 @@ struct Logger {
 }
 
 impl Logger {
-    pub fn new(file: Option<PathBuf>) -> Self {
-        Self { file }
+    pub fn new(file: impl Into<Option<PathBuf>>) -> Self {
+        Self { file: file.into() }
+    }
+
+    /// Stored next to the service exe
+    #[cfg(windows)]
+    pub fn file() -> Self {
+        let mut path = std::env::current_exe().unwrap();
+        path.set_extension("exe.log");
+        Self::new(path)
     }
 
     pub fn log(&self, s: impl AsRef<str>) {
@@ -203,10 +211,11 @@ mod echo_service {
             quick_xml::de::from_slice(&bytes).map_err(|x| io::Error::new(io::ErrorKind::Other, x))
         }
 
+        /// Stored next to the service exe
         fn config_file() -> std::path::PathBuf {
             let mut path = std::env::current_exe().unwrap();
             path.set_extension("exe.config");
-            std::env::temp_dir().join(path.file_name().unwrap())
+            path
         }
     }
 
@@ -224,9 +233,8 @@ mod echo_service {
     }
 
     fn run_service() -> Result<()> {
-        let logger = Logger::new(Some(
-            std::env::temp_dir().join(format!("{SERVICE_NAME}.log")),
-        ));
+        let logger = Logger::file();
+        logger.log("Starting windows service for {SERVICE_NAME}");
 
         // Create a channel to be able to poll a stop event from the service worker loop.
         let (shutdown_tx, shutdown_rx) = std::sync::mpsc::channel();
