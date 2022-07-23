@@ -201,14 +201,14 @@ mod echo_service {
     impl Config {
         pub fn save(&self) -> io::Result<()> {
             let mut bytes = Vec::new();
-            quick_xml::se::to_writer(&mut bytes, self)
+            serde_json::to_writer(&mut bytes, self)
                 .map_err(|x| io::Error::new(io::ErrorKind::Other, x))?;
             std::fs::write(Self::config_file(), bytes)
         }
 
         pub fn load() -> io::Result<Self> {
             let bytes = std::fs::read(Self::config_file())?;
-            quick_xml::de::from_slice(&bytes).map_err(|x| io::Error::new(io::ErrorKind::Other, x))
+            serde_json::from_slice(&bytes).map_err(|x| io::Error::new(io::ErrorKind::Other, x))
         }
 
         /// Stored next to the service exe
