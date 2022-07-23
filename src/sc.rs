@@ -190,19 +190,19 @@ impl ServiceManager for ScServiceManager {
             &service_name,
             [
                 // type= {service_type}
-                OsStr::new("type= "),
+                OsStr::new("type="),
                 service_type.as_os_str(),
                 // start= {start_type}
-                OsStr::new("start= "),
+                OsStr::new("start="),
                 start_type.as_os_str(),
                 // error= {error_severity}
-                OsStr::new("error= "),
+                OsStr::new("error="),
                 error_severity.as_os_str(),
                 // binpath= "{program} {args}"
-                OsStr::new("binpath= "),
+                OsStr::new("binpath="),
                 binpath.as_os_str(),
                 // displayname= {display_name}
-                OsStr::new("displayname= "),
+                OsStr::new("displayname="),
                 display_name,
             ],
         )
