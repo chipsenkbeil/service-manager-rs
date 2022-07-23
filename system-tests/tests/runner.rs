@@ -5,6 +5,20 @@ use std::{net::SocketAddr, thread, time::Duration};
 /// Time to wait from starting a service to communicating with it
 static WAIT_PERIOD_SECS: f32 = 1.5;
 
+fn cleanup(service_manager: &dyn ServiceManager, service_label: &ServiceLabel) {
+    let _ = service_manager.stop(ServiceStopCtx {
+        label: service_label.clone(),
+    });
+
+    thread::sleep(Duration::from_secs_f32(WAIT_PERIOD_SECS));
+
+    let _ = service_manager.uninstall(ServiceUninstallCtx {
+        label: service_label.clone(),
+    });
+
+    thread::sleep(Duration::from_secs_f32(WAIT_PERIOD_SECS));
+}
+
 /// Run test with given service manager
 pub fn run_test(service_manager: impl Into<Box<dyn ServiceManager>>) {
     let service_manager = service_manager.into();
@@ -17,10 +31,8 @@ pub fn run_test(service_manager: impl Into<Box<dyn ServiceManager>>) {
         "Service not available"
     );
 
-    // Attempt to uninstall the service in case it already exists from a failed test
-    let _ = service_manager.uninstall(ServiceUninstallCtx {
-        label: service_label.clone(),
-    });
+    // Attempt to stop & uninstall the service in case it already exists from a failed test
+    cleanup(service_manager.as_ref(), &service_label);
 
     // Install the service
     service_manager
