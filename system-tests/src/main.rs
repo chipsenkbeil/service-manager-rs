@@ -2,8 +2,36 @@ use clap::{Parser, Subcommand};
 use std::{
     io::{self, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    path::PathBuf,
     thread,
 };
+
+#[derive(Clone)]
+struct Logger {
+    file: Option<PathBuf>,
+}
+
+impl Logger {
+    pub fn new(file: Option<PathBuf>) -> Self {
+        Self { file }
+    }
+
+    pub fn log(&self, s: impl AsRef<str>) {
+        match self.file.as_deref() {
+            Some(file) => {
+                let mut f = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(file)
+                    .unwrap();
+                f.write_all(s.as_ref().as_bytes()).unwrap();
+                f.write_all(b"\n").unwrap();
+                f.flush().unwrap();
+            }
+            None => eprintln!("{}", s.as_ref()),
+        }
+    }
+}
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -25,6 +53,10 @@ enum Action {
 
     /// Listens for a connection and echoes back anything received
     Listen {
+        /// Optional file to write output instead of stderr
+        #[clap(long)]
+        log_file: Option<PathBuf>,
+
         /// Address to bind to over TCP
         addr: SocketAddr,
     },
@@ -68,31 +100,37 @@ impl Cli {
                 Ok(())
             }
 
-            Action::Listen { addr } => {
+            Action::Listen { addr, log_file } => {
+                let logger = Logger::new(log_file);
                 let handle = thread::spawn(move || {
                     let listener = TcpListener::bind(addr)?;
 
                     let addr = listener.local_addr()?;
-                    eprintln!("Listening on {addr}");
+                    logger.log(format!("Listening on {addr}"));
 
                     let mut connections = Vec::new();
                     while let Ok((mut stream, addr)) = listener.accept() {
-                        eprintln!("New connection {addr}");
+                        let logger = logger.clone();
+                        logger.log(format!("New connection {addr}"));
                         connections.push(thread::spawn(move || {
                             let mut buf = [0u8; 128];
                             loop {
                                 match stream.read(&mut buf) {
                                     Ok(n) if n > 0 => {
                                         if let Err(x) = stream.write_all(&buf[..n]) {
-                                            eprintln!("Connection {addr} failed to write: {x}");
+                                            logger.log(format!(
+                                                "Connection {addr} failed to write: {x}"
+                                            ));
                                             break;
                                         }
                                     }
                                     Ok(_) => {
-                                        eprintln!("Connection {addr} closed");
+                                        logger.log(format!("Connection {addr} closed"));
                                         break;
                                     }
-                                    Err(x) => eprintln!("Connection {addr} terminated: {x}"),
+                                    Err(x) => {
+                                        logger.log(format!("Connection {addr} terminated: {x}"))
+                                    }
                                 }
                             }
                         }));

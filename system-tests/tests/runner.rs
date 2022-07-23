@@ -41,7 +41,15 @@ pub fn run_test(service_manager: impl Into<Box<dyn ServiceManager>>) {
             program: assert_cmd::cargo::cargo_bin(crate_name!())
                 .to_string_lossy()
                 .to_string(),
-            args: vec!["listen".to_string(), addr.to_string()],
+            args: vec![
+                "listen".to_string(),
+                addr.to_string(),
+                "--log-file".to_string(),
+                std::env::temp_dir()
+                    .join(format!("{service_label}.log"))
+                    .to_string_lossy()
+                    .to_string(),
+            ],
         })
         .unwrap();
 
