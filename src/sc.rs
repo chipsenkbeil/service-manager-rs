@@ -243,7 +243,9 @@ fn sc_exe<'a>(
     service_name: &str,
     args: impl IntoIterator<Item = &'a OsStr>,
 ) -> io::Result<()> {
-    let mut command = Command::new(SC_EXE).arg(cmd).arg(service_name);
+    let mut command = Command::new(SC_EXE);
+
+    command.arg(cmd).arg(service_name);
 
     for arg in args {
         command.arg(arg);
