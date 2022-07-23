@@ -17,6 +17,11 @@ pub fn run_test(service_manager: impl Into<Box<dyn ServiceManager>>) {
         "Service not available"
     );
 
+    // Attempt to uninstall the service in case it already exists from a failed test
+    let _ = service_manager.uninstall(ServiceUninstallCtx {
+        label: service_label.clone(),
+    });
+
     // Install the service
     service_manager
         .install(ServiceInstallCtx {
