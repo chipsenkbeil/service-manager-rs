@@ -77,7 +77,7 @@ impl ServiceManager for SystemdServiceManager {
         let service = make_service(&script_name, ctx.program, ctx.args, self.user);
         std::fs::write(script_path.as_path(), service)?;
 
-        systemctl("enable", script_path.to_string_lossy().as_ref())
+        systemctl("enable", script_path.to_string_lossy().as_ref(), self.user)
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
@@ -89,16 +89,16 @@ impl ServiceManager for SystemdServiceManager {
         let script_name = ctx.label.to_script_name();
         let script_path = dir_path.join(format!("{script_name}.service"));
 
-        systemctl("disable", script_path.to_string_lossy().as_ref())?;
+        systemctl("disable", script_path.to_string_lossy().as_ref(), self.user)?;
         std::fs::remove_file(script_path)
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
-        systemctl("start", &ctx.label.to_script_name())
+        systemctl("start", &ctx.label.to_script_name(), self.user)
     }
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
-        systemctl("stop", &ctx.label.to_script_name())
+        systemctl("stop", &ctx.label.to_script_name(), self.user)
     }
 
     fn level(&self) -> ServiceLevel {
@@ -119,8 +119,16 @@ impl ServiceManager for SystemdServiceManager {
     }
 }
 
-fn systemctl(cmd: &str, label: &str) -> io::Result<()> {
-    let output = Command::new(SYSTEMCTL).arg(cmd).arg(label).output()?;
+fn systemctl(cmd: &str, label: &str, user: bool) -> io::Result<()> {
+    let output = {
+        let mut command = Command::new(SYSTEMCTL);
+
+        if user {
+            command.arg("--user");
+        }
+
+        command.arg(cmd).arg(label).output()?
+    };
 
     if output.status.success() {
         Ok(())
