@@ -154,8 +154,8 @@ mod echo_service {
 
     impl Config {
         pub fn save(&self) -> io::Result<()> {
-            let bytes = Vec::new();
-            quick_xml::se::to_writer(bytes, self)
+            let mut bytes = Vec::new();
+            quick_xml::se::to_writer(&mut bytes, self)
                 .map_err(|x| io::Error::new(io::ErrorKind::Other, x))?;
             std::fs::write(Self::config_file(), bytes)
         }
@@ -190,19 +190,22 @@ mod echo_service {
         let (shutdown_tx, shutdown_rx) = std::sync::mpsc::channel();
 
         // Define system service event handler that will be receiving service events.
-        let event_handler = move |control_event| -> ServiceControlHandlerResult {
-            match control_event {
-                // Notifies a service to report its current status information to the service
-                // control manager. Always return NoError even if not implemented.
-                ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+        let event_handler = {
+            let shutdown_tx = shutdown_tx.clone();
+            move |control_event| -> ServiceControlHandlerResult {
+                match control_event {
+                    // Notifies a service to report its current status information to the service
+                    // control manager. Always return NoError even if not implemented.
+                    ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
 
-                // Handle stop
-                ServiceControl::Stop => {
-                    shutdown_tx.send(()).unwrap();
-                    ServiceControlHandlerResult::NoError
+                    // Handle stop
+                    ServiceControl::Stop => {
+                        shutdown_tx.send(()).unwrap();
+                        ServiceControlHandlerResult::NoError
+                    }
+
+                    _ => ServiceControlHandlerResult::NotImplemented,
                 }
-
-                _ => ServiceControlHandlerResult::NotImplemented,
             }
         };
 
