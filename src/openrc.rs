@@ -3,6 +3,7 @@ use super::{
     ServiceUninstallCtx,
 };
 use std::{
+    ffi::{OsStr, OsString},
     fs::OpenOptions,
     io::{self, Write},
     os::unix::fs::OpenOptionsExt,
@@ -50,7 +51,12 @@ impl ServiceManager for OpenRcServiceManager {
         let script_name = ctx.label.to_script_name();
         let script_path = dir_path.join(&script_name);
 
-        let script = make_script(&script_name, &script_name, ctx.program.as_str(), ctx.args);
+        let script = make_script(
+            &script_name,
+            &script_name,
+            ctx.program.as_os_str(),
+            ctx.args,
+        );
 
         // Create our script and ensure it is executable; fail if a script
         // exists at the location because we don't want to break something
@@ -142,8 +148,13 @@ fn service_dir_path() -> PathBuf {
     PathBuf::from("/etc/init.d")
 }
 
-fn make_script(description: &str, provide: &str, program: &str, args: Vec<String>) -> String {
-    let args = args.join(" ");
+fn make_script(description: &str, provide: &str, program: &OsStr, args: Vec<OsString>) -> String {
+    let program = program.to_string_lossy();
+    let args = args
+        .into_iter()
+        .map(|a| a.to_string_lossy().to_string())
+        .collect::<Vec<String>>()
+        .join(" ");
     format!(
         r#"
 #!/sbin/openrc-run

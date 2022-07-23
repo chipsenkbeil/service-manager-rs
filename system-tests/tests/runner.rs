@@ -1,6 +1,6 @@
 use assert_cmd::{crate_name, Command};
 use service_manager::*;
-use std::{net::SocketAddr, thread, time::Duration};
+use std::{ffi::OsString, net::SocketAddr, thread, time::Duration};
 
 /// Time to wait from starting a service to communicating with it
 const WAIT_PERIOD: Duration = Duration::from_secs(1);
@@ -47,17 +47,14 @@ pub fn run_test(service_manager: impl Into<Box<dyn ServiceManager>>) {
     service_manager
         .install(ServiceInstallCtx {
             label: service_label.clone(),
-            program: assert_cmd::cargo::cargo_bin(crate_name!())
-                .to_string_lossy()
-                .to_string(),
+            program: assert_cmd::cargo::cargo_bin(crate_name!()),
             args: vec![
-                "listen".to_string(),
-                addr.to_string(),
-                "--log-file".to_string(),
+                OsString::from("listen"),
+                OsString::from(addr.to_string()),
+                OsString::from("--log-file"),
                 std::env::temp_dir()
                     .join(format!("{service_label}.log"))
-                    .to_string_lossy()
-                    .to_string(),
+                    .into_os_string(),
             ],
         })
         .unwrap();

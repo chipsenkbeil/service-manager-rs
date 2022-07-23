@@ -2,7 +2,7 @@ use super::{
     ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
-use std::{io, path::PathBuf, process::Command};
+use std::{ffi::OsString, io, path::PathBuf, process::Command};
 
 static SYSTEMCTL: &str = "systemctl";
 
@@ -74,7 +74,12 @@ impl ServiceManager for SystemdServiceManager {
 
         let script_name = ctx.label.to_script_name();
         let script_path = dir_path.join(format!("{script_name}.service"));
-        let service = make_service(&script_name, ctx.program, ctx.args, self.user);
+        let service = make_service(
+            &script_name,
+            ctx.program.into_os_string(),
+            ctx.args,
+            self.user,
+        );
         std::fs::write(script_path.as_path(), service)?;
 
         systemctl("enable", script_path.to_string_lossy().as_ref(), self.user)
@@ -159,8 +164,13 @@ fn user_dir_path() -> io::Result<PathBuf> {
         .join("user"))
 }
 
-fn make_service(description: &str, program: String, args: Vec<String>, user: bool) -> String {
-    let args = args.join(" ");
+fn make_service(description: &str, program: OsString, args: Vec<OsString>, user: bool) -> String {
+    let program = program.to_string_lossy();
+    let args = args
+        .into_iter()
+        .map(|a| a.to_string_lossy().to_string())
+        .collect::<Vec<String>>()
+        .join(" ");
     let install = if user {
         ""
     } else {

@@ -2,7 +2,7 @@ use super::{
     ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
-use std::{io, path::PathBuf, process::Command};
+use std::{ffi::OsStr, io, path::PathBuf, process::Command};
 
 static LAUNCHCTL: &str = "launchctl";
 
@@ -169,11 +169,11 @@ fn user_agent_dir_path() -> io::Result<PathBuf> {
 fn make_plist<'a>(
     config: &LaunchdInstallConfig,
     label: &str,
-    args: impl Iterator<Item = &'a str>,
+    args: impl Iterator<Item = &'a OsStr>,
 ) -> String {
     let LaunchdInstallConfig { keep_alive } = config;
     let args = args
-        .map(|arg| format!("<string>{arg}</string>"))
+        .map(|arg| format!("<string>{}</string>", arg.to_string_lossy()))
         .collect::<Vec<String>>()
         .join("");
     format!(r#"

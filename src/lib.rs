@@ -1,4 +1,9 @@
-use std::{fmt, io, str::FromStr};
+use std::{
+    ffi::{OsStr, OsString},
+    fmt, io,
+    path::PathBuf,
+    str::FromStr,
+};
 
 mod kind;
 
@@ -233,23 +238,23 @@ pub struct ServiceInstallCtx {
     /// Path to the program to run
     ///
     /// E.g. `/usr/local/bin/my-program`
-    pub program: String,
+    pub program: PathBuf,
 
     /// Arguments to use for the program
     ///
     /// E.g. `--arg`, `value`, `--another-arg`
-    pub args: Vec<String>,
+    pub args: Vec<OsString>,
 }
 
 impl ServiceInstallCtx {
     /// Iterator over the program and its arguments
-    pub fn cmd_iter(&self) -> impl Iterator<Item = &str> {
-        std::iter::once(self.program.as_str()).chain(self.args_iter())
+    pub fn cmd_iter(&self) -> impl Iterator<Item = &OsStr> {
+        std::iter::once(self.program.as_os_str()).chain(self.args_iter())
     }
 
     /// Iterator over the program arguments
-    pub fn args_iter(&self) -> impl Iterator<Item = &str> {
-        self.args.iter().map(String::as_str)
+    pub fn args_iter(&self) -> impl Iterator<Item = &OsStr> {
+        self.args.iter().map(OsString::as_os_str)
     }
 }
 
