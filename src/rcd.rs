@@ -118,6 +118,11 @@ fn rc_d_script(cmd: &str, service: &str) -> io::Result<()> {
         let msg = String::from_utf8(output.stderr)
             .ok()
             .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                String::from_utf8(output.stdout)
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+            })
             .unwrap_or_else(|| format!("Failed to {cmd} {service}"));
 
         Err(io::Error::new(io::ErrorKind::Other, msg))
