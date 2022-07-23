@@ -170,7 +170,7 @@ fn main() -> io::Result<()> {
 
 #[cfg(windows)]
 mod echo_service {
-    use super::{Cli, Parser};
+    use super::{Cli, Logger, Parser};
     use std::{ffi::OsString, io, sync::mpsc, thread, time::Duration};
     use windows_service::{
         define_windows_service,
@@ -224,6 +224,10 @@ mod echo_service {
     }
 
     fn run_service() -> Result<()> {
+        let logger = Logger::new(Some(
+            std::env::temp_dir().join(format!("{SERVICE_NAME}.log")),
+        ));
+
         // Create a channel to be able to poll a stop event from the service worker loop.
         let (shutdown_tx, shutdown_rx) = std::sync::mpsc::channel();
 
@@ -249,9 +253,15 @@ mod echo_service {
 
         // Register system service event handler.
         // The returned status handle should be used to report service status changes to the system.
+        logger.log(format!(
+            "Registering service control handler for {SERVICE_NAME}"
+        ));
         let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
 
         // Tell the system that service is running
+        logger.log(format!(
+            "Setting service status as running for {SERVICE_NAME}"
+        ));
         status_handle.set_service_status(ServiceStatus {
             service_type: SERVICE_TYPE,
             current_state: ServiceState::Running,
@@ -263,12 +273,37 @@ mod echo_service {
         })?;
 
         // Kick off thread to run our cli
-        thread::spawn(move || {
-            Cli::try_parse_from(Config::load().unwrap().args)
-                .unwrap()
-                .run()
-                .unwrap();
-            shutdown_tx.send(()).unwrap();
+        logger.log(format!("Spawning CLI thread for {SERVICE_NAME}"));
+        thread::spawn({
+            let logger = logger.clone();
+            move || {
+                logger.log(format!(
+                    "Loading CLI using args from disk for {SERVICE_NAME}"
+                ));
+                let config = match Config::load() {
+                    Ok(config) => config,
+                    Err(x) => {
+                        logger.log(format!("[ERROR] {x}"));
+                        panic!("{x}");
+                    }
+                };
+
+                logger.log(format!("Parsing CLI args from disk for {SERVICE_NAME}"));
+                let cli = match Cli::try_parse_from(config.args) {
+                    Ok(cli) => cli,
+                    Err(x) => {
+                        logger.log(format!("[ERROR] {x}"));
+                        panic!("{x}");
+                    }
+                };
+
+                logger.log(format!("Running CLI for {SERVICE_NAME}"));
+                if let Err(x) = cli.run() {
+                    logger.log(format!("[ERROR] {x}"));
+                }
+
+                shutdown_tx.send(()).unwrap();
+            }
         });
         loop {
             match shutdown_rx.recv_timeout(Duration::from_millis(100)) {
@@ -281,6 +316,9 @@ mod echo_service {
         }
 
         // Tell the system that service has stopped.
+        logger.log(format!(
+            "Setting service status as stopped for {SERVICE_NAME}"
+        ));
         status_handle.set_service_status(ServiceStatus {
             service_type: SERVICE_TYPE,
             current_state: ServiceState::Stopped,
