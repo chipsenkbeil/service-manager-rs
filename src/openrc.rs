@@ -67,6 +67,11 @@ impl ServiceManager for OpenRcServiceManager {
             .open(script_path.as_path())?;
         file.write_all(script.as_bytes())?;
 
+        // Ensure that the data/metadata is synced and catch errors before dropping
+        // NOTE: Dropping to ensure that file is available for rc-update
+        file.sync_all()?;
+        drop(file);
+
         rc_update("add", &script_name)
     }
 

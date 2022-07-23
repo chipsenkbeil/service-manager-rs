@@ -52,7 +52,7 @@ jobs:
   test-alpine:
     name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (Alpine Linux)"
     runs-on: ubuntu-latest
-    container: rust:alpine
+    container: alpine:3.16-openrc
     strategy:
       fail-fast: false
       matrix:
@@ -61,10 +61,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install base dependencies
-        run: apk add --update --no-cache build-base libc6-compat sudo
+        run: apk add --update --no-cache build-base libc6-compat curl sudo
       - name: Configure passwordless sudo
         run: echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
-      - name: Set the stable toolchain for sudo
-        run: sudo --preserve-env rustup default stable
-      - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
+      - name: Install stable toolchain using sudo
+        run: sudo --preserve-env curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+      - name: Run ${{ matrix.test }} for ${{ matrix.manager }} using sudo
         run: sudo --preserve-env cargo test -p system-tests ${{ matrix.test }}

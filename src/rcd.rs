@@ -61,6 +61,11 @@ impl ServiceManager for RcdServiceManager {
             .open(rc_d_script_path(&service))?;
         file.write_all(script.as_bytes())?;
 
+        // Ensure that the data/metadata is synced and catch errors before dropping
+        // NOTE: Dropping to ensure that file is available for rc.d enable
+        file.sync_all()?;
+        drop(file);
+
         rc_d_script("enable", &service)
     }
 
