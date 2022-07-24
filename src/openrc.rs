@@ -67,11 +67,14 @@ impl ServiceManager for OpenRcServiceManager {
             SCRIPT_FILE_PERMISSIONS,
         )?;
 
-        rc_update("add", &script_name)
+        // Add with default run level explicitly defined to prevent weird systems
+        // like alpine's docker container with openrc from setting a different
+        // run level than default
+        rc_update("add", &script_name, [OsStr::new("default")])
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
-        rc_update("delete", &ctx.label.to_script_name())
+        rc_update("delete", &ctx.label.to_script_name(), [])
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
@@ -118,14 +121,24 @@ fn rc_service(cmd: &str, service: &str) -> io::Result<()> {
     }
 }
 
-fn rc_update(cmd: &str, service: &str) -> io::Result<()> {
-    let output = Command::new(RC_UPDATE)
+fn rc_update<'a>(
+    cmd: &str,
+    service: &str,
+    args: impl IntoIterator<Item = &'a OsStr>,
+) -> io::Result<()> {
+    let mut command = Command::new(RC_UPDATE);
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .arg(cmd)
-        .arg(service)
-        .output()?;
+        .arg(service);
+
+    for arg in args {
+        command.arg(arg);
+    }
+
+    let output = command.output()?;
 
     if output.status.success() {
         Ok(())

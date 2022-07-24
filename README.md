@@ -41,7 +41,7 @@ use std::{ffi::OsString, path::PathBuf};
 let label: ServiceLabel = "com.example.my-service".parse().unwrap();
 
 // Get generic service by detecting what is available on the platform
-let manager = <dyn ServiceManager>::native_target()
+let manager = <dyn ServiceManager>::native()
     .expect("Failed to detect management platform");
 
 // Install our service using the underlying service management platform
@@ -82,7 +82,7 @@ use service_manager::*;
 let label: ServiceLabel = "com.example.my-service".parse().unwrap();
 
 // Get generic service by detecting what is available on the platform
-let mut manager = <dyn ServiceManager>::native_target()
+let mut manager = <dyn ServiceManager>::native()
     .expect("Failed to detect management platform");
 
 // Update our manager to work with user-level services
