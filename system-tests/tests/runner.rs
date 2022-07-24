@@ -72,6 +72,7 @@ where
         .arg("hello world")
         .assert()
         .stdout("hello world\n");
+    wait();
 
     // Stop the service
     eprintln!("Stopping service");
@@ -91,4 +92,5 @@ where
             label: service_label,
         })
         .unwrap();
+    wait();
 }
