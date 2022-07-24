@@ -66,6 +66,11 @@ jobs:
         run: apk add --update --no-cache build-base libc6-compat curl sudo
       - name: Configure passwordless sudo
         run: echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+      - name: Force OpenRC to work inside container
+        run: |
+          sudo mkdir -p /run/openrc
+          sudo touch /run/openrc/softlevel
+          sudo rc-status -a
       - name: Install stable toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
       - name: Run ${{ matrix.test }} for ${{ matrix.manager }} using sudo
