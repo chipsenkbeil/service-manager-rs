@@ -9,8 +9,10 @@ use std::{
     process::{Command, Stdio},
 };
 
-// NOTE: On FreeBSD, /etc/rc.d/{script} has permissions of r-xr-xr-x (555)
-const SCRIPT_FILE_PERMISSIONS: u32 = 0o555;
+static SERVICE: &str = "service";
+
+// NOTE: On FreeBSD, /usr/local/etc/rc.d/{script} has permissions of rwxr-xr-x (755)
+const SCRIPT_FILE_PERMISSIONS: u32 = 0o755;
 
 /// Configuration settings tied to rc.d services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -99,14 +101,15 @@ fn rc_d_script_path(name: &str) -> PathBuf {
 
 #[inline]
 fn service_dir_path() -> PathBuf {
-    PathBuf::from("/etc/rc.d")
+    PathBuf::from("/usr/local/etc/rc.d")
 }
 
 fn rc_d_script(cmd: &str, service: &str) -> io::Result<()> {
-    let output = Command::new(rc_d_script_path(service))
+    let output = Command::new(SERVICE)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .arg(service)
         .arg(cmd)
         .output()?;
 
