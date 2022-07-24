@@ -63,16 +63,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install base dependencies
-        run: apk add --update --no-cache build-base libc6-compat curl sudo
+        run: apk add --update --no-cache openrc busybox-initscripts build-base libc6-compat curl sudo
       - name: Configure passwordless sudo
         run: echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
       - name: Force OpenRC to work inside container
         run: |
           sudo mkdir -p /run/openrc
           sudo touch /run/openrc/softlevel
-          sudo echo 'rc_controller_cgroups="NO"' >> /etc/rc.conf
-          sudo echo 'rc_depend_strict="NO"' >> /etc/rc.conf
-          sudo echo 'rc_need="!net !dev !udev-mount !sysfs !checkfs !fsck !netmount !logger !clock !modules"' >> /etc/rc.conf
           sudo rc-update --update
           sudo rc-status -a
       - name: Install stable toolchain
