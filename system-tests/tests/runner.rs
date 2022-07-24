@@ -10,6 +10,10 @@ use std::{
 /// Time to wait from starting a service to communicating with it
 const WAIT_PERIOD: Duration = Duration::from_secs(1);
 
+pub fn is_running_in_ci() -> bool {
+    std::env::var("CI").as_deref() == Ok("true")
+}
+
 fn wait() {
     eprintln!("Waiting {}s before continuing", WAIT_PERIOD.as_secs_f32());
     thread::sleep(WAIT_PERIOD);
@@ -87,7 +91,7 @@ pub fn run_test(manager: &TypedServiceManager) {
 
     // Stop the service
     eprintln!("Stopping service");
-    if manager.is_openrc() && std::env::var("CI").as_deref() == Ok("true") {
+    if manager.is_openrc() && is_running_in_ci() {
         let res = manager.stop(ServiceStopCtx {
             label: service_label.clone(),
         });
