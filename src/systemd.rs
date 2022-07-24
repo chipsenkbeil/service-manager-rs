@@ -4,7 +4,7 @@ use super::{
 };
 use std::{
     ffi::OsString,
-    io,
+    fmt, io,
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -14,7 +14,60 @@ const SERVICE_FILE_PERMISSIONS: u32 = 0o644;
 
 /// Configuration settings tied to systemd services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SystemdConfig {}
+pub struct SystemdConfig {
+    pub install: SystemdInstallConfig,
+}
+
+/// Configuration settings tied to systemd services during installation
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SystemdInstallConfig {
+    pub start_limit_interval_sec: Option<u32>,
+    pub start_limit_burst: Option<u32>,
+    pub restart: SystemdServiceRestartType,
+    pub restart_sec: Option<u32>,
+}
+
+impl Default for SystemdInstallConfig {
+    fn default() -> Self {
+        Self {
+            start_limit_interval_sec: None,
+            start_limit_burst: None,
+            restart: SystemdServiceRestartType::OnFailure,
+            restart_sec: None,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum SystemdServiceRestartType {
+    No,
+    Always,
+    OnSuccess,
+    OnFailure,
+    OnAbnormal,
+    OnAbort,
+    OnWatch,
+}
+
+impl Default for SystemdServiceRestartType {
+    fn default() -> Self {
+        Self::No
+    }
+}
+
+impl fmt::Display for SystemdServiceRestartType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::No => write!(f, "no"),
+            Self::Always => write!(f, "always"),
+            Self::OnSuccess => write!(f, "on-success"),
+            Self::OnFailure => write!(f, "on-failure"),
+            Self::OnAbnormal => write!(f, "on-abnormal"),
+            Self::OnAbort => write!(f, "on-abort"),
+            Self::OnWatch => write!(f, "on-watch"),
+        }
+    }
+}
 
 /// Implementation of [`ServiceManager`] for Linux's [systemd](https://en.wikipedia.org/wiki/Systemd)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -83,6 +136,7 @@ impl ServiceManager for SystemdServiceManager {
         let script_name = ctx.label.to_script_name();
         let script_path = dir_path.join(format!("{script_name}.service"));
         let service = make_service(
+            &self.config.install,
             &script_name,
             ctx.program.into_os_string(),
             ctx.args,
@@ -182,32 +236,55 @@ fn user_dir_path() -> io::Result<PathBuf> {
         .join("user"))
 }
 
-fn make_service(description: &str, program: OsString, args: Vec<OsString>, user: bool) -> String {
+fn make_service(
+    config: &SystemdInstallConfig,
+    description: &str,
+    program: OsString,
+    args: Vec<OsString>,
+    user: bool,
+) -> String {
+    use std::fmt::Write as _;
+    let SystemdInstallConfig {
+        start_limit_interval_sec,
+        start_limit_burst,
+        restart,
+        restart_sec,
+    } = config;
+
+    let mut service = String::new();
+    let _ = writeln!(service, "[Unit]");
+    let _ = writeln!(service, "Description={description}");
+
+    if let Some(x) = start_limit_interval_sec {
+        let _ = writeln!(service, "StartLimitIntervalSec={x}");
+    }
+
+    if let Some(x) = start_limit_burst {
+        let _ = writeln!(service, "StartLimitBurst={x}");
+    }
+
+    let _ = writeln!(service, "[Service]");
+
     let program = program.to_string_lossy();
     let args = args
         .into_iter()
         .map(|a| a.to_string_lossy().to_string())
         .collect::<Vec<String>>()
         .join(" ");
-    let install = if user {
-        ""
-    } else {
-        "
-[Install]
-WantedBy=multi-user.target
-        "
-        .trim()
-    };
+    let _ = writeln!(service, "ExecStart={program} {args}");
 
-    format!(
-        r#"
-[Unit]
-Description={description}
-[Service]
-ExecStart={program} {args}
-{install}
-"#
-    )
-    .trim()
-    .to_string()
+    if *restart != SystemdServiceRestartType::No {
+        let _ = writeln!(service, "Restart={restart}");
+    }
+
+    if let Some(x) = restart_sec {
+        let _ = writeln!(service, "RestartSec={x}");
+    }
+
+    if !user {
+        service.push_str("[Install]\n");
+        service.push_str("WantedBy=multi-user.target\n");
+    }
+
+    service.trim().to_string()
 }
