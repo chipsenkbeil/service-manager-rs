@@ -39,9 +39,11 @@ impl OpenRcServiceManager {
 
 impl ServiceManager for OpenRcServiceManager {
     fn available(&self) -> io::Result<bool> {
-        which::which(RC_SERVICE)
-            .map(|_| true)
-            .map_err(|x| io::Error::new(io::ErrorKind::NotFound, x))
+        match which::which(RC_SERVICE) {
+            Ok(_) => Ok(true),
+            Err(which::Error::CannotFindBinaryPath) => Ok(false),
+            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+        }
     }
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {

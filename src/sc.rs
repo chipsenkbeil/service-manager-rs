@@ -165,6 +165,7 @@ impl ScServiceManager {
 
 impl ServiceManager for ScServiceManager {
     fn available(&self) -> io::Result<bool> {
+        // NOTE: Windows should always have sc.exe
         Ok(true)
     }
 

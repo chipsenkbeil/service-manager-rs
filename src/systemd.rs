@@ -58,9 +58,11 @@ impl SystemdServiceManager {
 
 impl ServiceManager for SystemdServiceManager {
     fn available(&self) -> io::Result<bool> {
-        which::which(SYSTEMCTL)
-            .map(|_| true)
-            .map_err(|x| io::Error::new(io::ErrorKind::NotFound, x))
+        match which::which(SYSTEMCTL) {
+            Ok(_) => Ok(true),
+            Err(which::Error::CannotFindBinaryPath) => Ok(false),
+            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+        }
     }
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
