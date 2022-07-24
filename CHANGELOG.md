@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Removed
 
+## [0.1.1] - 2022-07-24
+
+### Added
+
+- `SystemdInstallConfig` and `SystemdServiceRestartType` with install
+  config defaulting to `on-failure` to ensure that systemd properly restarts
+  the process
+
 ## [0.1.0] - 2022-07-24
 
 ### Added
