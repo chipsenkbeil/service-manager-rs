@@ -105,68 +105,21 @@ fn service_dir_path() -> PathBuf {
 }
 
 fn rc_d_script(cmd: &str, service: &str) -> io::Result<()> {
-    let mut child = Command::new(SERVICE)
+    // NOTE: We MUST mark stdout/stderr as null, otherwise this hangs. Attempting to use output()
+    //       does not work. The alternative is to spawn threads to read the stdout and stderr,
+    //       but that seems overkill for the purpose of displaying an error message.
+    let status = Command::new(SERVICE)
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .arg(service)
         .arg(cmd)
-        .spawn()?;
+        .status()?;
 
-    let mut stdout = child.stdout.take().unwrap();
-    let mut stderr = child.stderr.take().unwrap();
-
-    std::thread::spawn(move || {
-        use std::io::{Read, Write};
-        let mut buf = [0u8; 1024];
-        loop {
-            match stdout.read(&mut buf) {
-                Ok(n) if n > 0 => {
-                    let mut lock = std::io::stdout().lock();
-                    lock.write_all(&buf[..n])?;
-                    lock.flush()?;
-                }
-                Ok(_) => break,
-                Err(x) => return Err(x),
-            }
-        }
-
-        Ok(())
-    });
-
-    std::thread::spawn(move || {
-        use std::io::{Read, Write};
-        let mut buf = [0u8; 1024];
-        loop {
-            match stderr.read(&mut buf) {
-                Ok(n) if n > 0 => {
-                    let mut lock = std::io::stderr().lock();
-                    lock.write_all(&buf[..n])?;
-                    lock.flush()?;
-                }
-                Ok(_) => break,
-                Err(x) => return Err(x),
-            }
-        }
-
-        Ok(())
-    });
-
-    let output = child.wait_with_output()?;
-
-    if output.status.success() {
+    if status.success() {
         Ok(())
     } else {
-        let msg = String::from_utf8(output.stderr)
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .filter(|s| !s.trim().is_empty())
-            })
-            .unwrap_or_else(|| format!("Failed to {cmd} {service}"));
-
+        let msg = format!("Failed to {cmd} {service}");
         Err(io::Error::new(io::ErrorKind::Other, msg))
     }
 }
