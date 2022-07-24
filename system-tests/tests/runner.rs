@@ -1,6 +1,11 @@
 use assert_cmd::{crate_name, Command};
 use service_manager::*;
-use std::{ffi::OsString, net::SocketAddr, thread, time::Duration};
+use std::{
+    ffi::OsString,
+    net::{SocketAddr, TcpListener},
+    thread,
+    time::Duration,
+};
 
 /// Time to wait from starting a service to communicating with it
 const WAIT_PERIOD: Duration = Duration::from_secs(1);
@@ -18,10 +23,21 @@ pub fn run_test_n(manager: impl Into<TypedServiceManager>, n: usize) {
     }
 }
 
+fn find_ephemeral_port() -> u16 {
+    let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    TcpListener::bind(addr)
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
 /// Run test with given service manager
 pub fn run_test(manager: &TypedServiceManager) {
     let service_label: ServiceLabel = "com.example.echo".parse().unwrap();
-    let addr: SocketAddr = "127.0.0.1:8088".parse().unwrap();
+    let port = find_ephemeral_port();
+    let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    eprintln!("Identified echo server address: {addr}");
 
     // Ensure service manager is available
     eprintln!("Checking if service available");
