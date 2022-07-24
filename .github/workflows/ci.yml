@@ -70,6 +70,10 @@ jobs:
         run: |
           sudo mkdir -p /run/openrc
           sudo touch /run/openrc/softlevel
+          sudo echo 'rc_controller_cgroups="NO"' >> /etc/rc.conf
+          sudo echo 'rc_depend_strict="NO"' >> /etc/rc.conf
+          sudo echo 'rc_need="!net !dev !udev-mount !sysfs !checkfs !fsck !netmount !logger !clock !modules"' >> /etc/rc.conf
+          sudo rc-update --update
           sudo rc-status -a
       - name: Install stable toolchain
         run: curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
