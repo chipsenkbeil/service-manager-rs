@@ -6,7 +6,6 @@ use std::{
     ffi::{OsStr, OsString},
     fs::OpenOptions,
     io::{self, Write},
-    os::unix::fs::OpenOptionsExt,
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -55,11 +54,16 @@ impl ServiceManager for RcdServiceManager {
         // change an existing file's permissions
         //
         // NOTE: On FreeBSD, /etc/rc.d/{script} has permissions of r-xr-xr-x (555)
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .mode(0o555)
-            .open(rc_d_script_path(&service))?;
+        let mut opts = OpenOptions::new();
+        opts.create_new(true).write(true);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o555);
+        }
+
+        let mut file = opts.open(rc_d_script_path(&service))?;
         file.write_all(script.as_bytes())?;
 
         // Ensure that the data/metadata is synced and catch errors before dropping

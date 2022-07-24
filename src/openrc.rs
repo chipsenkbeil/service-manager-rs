@@ -6,7 +6,6 @@ use std::{
     ffi::{OsStr, OsString},
     fs::OpenOptions,
     io::{self, Write},
-    os::unix::fs::OpenOptionsExt,
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -68,11 +67,16 @@ impl ServiceManager for OpenRcServiceManager {
         // change an existing file's permissions
         //
         // NOTE: On Alpine Linux, /etc/init.d/{script} has permissions of rwxr-xr-x (755)
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .mode(0o755)
-            .open(script_path.as_path())?;
+        let mut opts = OpenOptions::new();
+        opts.create_new(true).write(true);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o755);
+        }
+
+        let mut file = opts.open(script_path.as_path())?;
         file.write_all(script.as_bytes())?;
 
         // Ensure that the data/metadata is synced and catch errors before dropping
