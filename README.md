@@ -1,6 +1,17 @@
 # Service Manager
 
-[![CI](https://github.com/chipsenkbeil/service-manager-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/chipsenkbeil/service-manager-rs/actions/workflows/ci.yml)
+[![Crates.io][crates_img]][crates_lnk]
+[![Docs][docs_img]][docs_lnk]
+[![CI][ci_img]][ci_lnk]
+
+[ci_img]: https://github.com/chipsenkbeil/service-manager-rs/actions/workflows/ci.yml/badge.svg
+[ci_lnk]: https://github.com/chipsenkbeil/service-manager-rs/actions/workflows/ci.yml
+
+[crates_img]: https://img.shields.io/crates/v/service-manager.svg
+[crates_lnk]: https://crates.io/crates/service-manager
+
+[docs_img]: https://docs.rs/service-manager/badge.svg
+[docs_lnk]: https://docs.rs/service-manager
 
 Rust library that provides an interface towards working with the
 following service management platforms:
@@ -10,6 +21,8 @@ following service management platforms:
 * [systemd](https://en.wikipedia.org/wiki/Systemd) (Linux)
 * [OpenRC](https://en.wikipedia.org/wiki/OpenRC) (Linux)
 * [rc.d](https://en.wikipedia.org/wiki/Init#Research_Unix-style/BSD-style) (FreeBSD)
+
+_Requires Rust `1.58.1` or higher!_
 
 ## Installation
 
@@ -118,6 +131,23 @@ manager.install(ServiceInstallCtx {
     program: PathBuf::from("path/to/my-service-executable"),
     args: vec![OsString::from("--some-arg")],
 }).expect("Failed to install");
+```
+
+### Running tests
+
+For testing purposes, we use a separate crate called `system-tests` and
+execute singular tests based on desired platform and level. From the root of
+the repository, execute the following to run a systemd user test:
+
+```bash
+cargo test -p system-tests systemd_for_user -- --nocapture
+```
+
+Separately, run a systemd system test using the following (notice using of
+`sudo -E` to maintain permissions needed for system-level installation):
+
+```bash
+sudo -E cargo test -p system-tests systemd_for_system -- --nocapture
 ```
 
 ## License

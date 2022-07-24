@@ -9,6 +9,26 @@ on:
       - main
 
 jobs:
+  msrv:
+    name: "Verify builds on minimum stable rust version of ${{ matrix.rust }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rust: 1.58.1, os: ubuntu-latest }
+          - { rust: 1.58.1, os: macos-latest }
+          - { rust: 1.58.1, os: windows-latest }
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust ${{ matrix.rust }}
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v1
+      - name: Build against Rust ${{ matrix.rust }}
+        run: cargo build --release
   tests:
     name: "Test Rust ${{ matrix.rust }} for ${{ matrix.test }} w/ ${{ matrix.manager }} (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
