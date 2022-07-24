@@ -2,7 +2,12 @@ use super::{
     ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
-use std::{ffi::OsString, io, path::PathBuf, process::Command};
+use std::{
+    ffi::OsString,
+    io,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
 static SYSTEMCTL: &str = "systemctl";
 
@@ -129,6 +134,11 @@ impl ServiceManager for SystemdServiceManager {
 fn systemctl(cmd: &str, label: &str, user: bool) -> io::Result<()> {
     let output = {
         let mut command = Command::new(SYSTEMCTL);
+
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         if user {
             command.arg("--user");

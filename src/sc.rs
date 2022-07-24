@@ -6,10 +6,21 @@ use std::{
     borrow::Cow,
     ffi::{OsStr, OsString},
     fmt, io,
-    process::Command,
+    process::{Command, Stdio},
 };
 
+#[cfg(windows)]
 mod shell_escape;
+
+#[cfg(not(windows))]
+mod shell_escape {
+    use std::{borrow::Cow, ffi::OsStr};
+
+    /// When not on windows, this will do nothing but return the input str
+    pub fn escape(s: Cow<'_, OsStr>) -> Cow<'_, OsStr> {
+        s
+    }
+}
 
 static SC_EXE: &str = "sc.exe";
 
@@ -165,8 +176,11 @@ impl ScServiceManager {
 
 impl ServiceManager for ScServiceManager {
     fn available(&self) -> io::Result<bool> {
-        // NOTE: Windows should always have sc.exe
-        Ok(true)
+        match which::which(SC_EXE) {
+            Ok(_) => Ok(true),
+            Err(which::Error::CannotFindBinaryPath) => Ok(false),
+            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+        }
     }
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
@@ -181,7 +195,7 @@ impl ServiceManager for ScServiceManager {
         binpath.push(shell_escape::escape(Cow::Borrowed(ctx.program.as_ref())));
         for arg in ctx.args_iter() {
             binpath.push(" ");
-            binpath.push(shell_escape::escape(Cow::Borrowed(arg.as_ref())));
+            binpath.push(shell_escape::escape(Cow::Borrowed(arg)));
         }
 
         let display_name = OsStr::new(&service_name);
@@ -245,6 +259,11 @@ fn sc_exe<'a>(
     args: impl IntoIterator<Item = &'a OsStr>,
 ) -> io::Result<()> {
     let mut command = Command::new(SC_EXE);
+
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     command.arg(cmd).arg(service_name);
 

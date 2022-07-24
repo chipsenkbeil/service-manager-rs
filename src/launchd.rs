@@ -2,7 +2,12 @@ use super::{
     ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
-use std::{ffi::OsStr, io, path::PathBuf, process::Command};
+use std::{
+    ffi::OsStr,
+    io,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
 static LAUNCHCTL: &str = "launchctl";
 
@@ -137,7 +142,13 @@ impl ServiceManager for LaunchdServiceManager {
 }
 
 fn launchctl(cmd: &str, label: &str) -> io::Result<()> {
-    let output = Command::new(LAUNCHCTL).arg(cmd).arg(label).output()?;
+    let output = Command::new(LAUNCHCTL)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .arg(cmd)
+        .arg(label)
+        .output()?;
 
     if output.status.success() {
         Ok(())

@@ -6,40 +6,20 @@ use std::{
 };
 
 mod kind;
+mod launchd;
+mod openrc;
+mod rcd;
+mod sc;
+mod systemd;
 mod typed;
 
-#[cfg(target_os = "macos")]
-mod launchd;
-
-#[cfg(unix)]
-mod openrc;
-
-#[cfg(unix)]
-mod rcd;
-
-#[cfg(windows)]
-mod sc;
-
-#[cfg(unix)]
-mod systemd;
-
 pub use kind::ServiceManagerKind;
-pub use typed::TypedServiceManager;
-
-#[cfg(target_os = "macos")]
 pub use launchd::LaunchdServiceManager;
-
-#[cfg(unix)]
 pub use openrc::OpenRcServiceManager;
-
-#[cfg(unix)]
 pub use rcd::RcdServiceManager;
-
-#[cfg(windows)]
 pub use sc::ScServiceManager;
-
-#[cfg(unix)]
 pub use systemd::SystemdServiceManager;
+pub use typed::TypedServiceManager;
 
 /// Interface for a service manager
 pub trait ServiceManager {

@@ -8,7 +8,7 @@ use std::{
     io::{self, Write},
     os::unix::fs::OpenOptionsExt,
     path::PathBuf,
-    process::Command,
+    process::{Command, Stdio},
 };
 
 static RC_SERVICE: &str = "rc-service";
@@ -111,7 +111,13 @@ impl ServiceManager for OpenRcServiceManager {
 }
 
 fn rc_service(cmd: &str, service: &str) -> io::Result<()> {
-    let output = Command::new(RC_SERVICE).arg(service).arg(cmd).output()?;
+    let output = Command::new(RC_SERVICE)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .arg(service)
+        .arg(cmd)
+        .output()?;
 
     if output.status.success() {
         Ok(())
@@ -126,7 +132,13 @@ fn rc_service(cmd: &str, service: &str) -> io::Result<()> {
 }
 
 fn rc_update(cmd: &str, service: &str) -> io::Result<()> {
-    let output = Command::new(RC_UPDATE).arg(cmd).arg(service).output()?;
+    let output = Command::new(RC_UPDATE)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .arg(cmd)
+        .arg(service)
+        .output()?;
 
     if output.status.success() {
         Ok(())

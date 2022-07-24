@@ -8,7 +8,7 @@ use std::{
     io::{self, Write},
     os::unix::fs::OpenOptionsExt,
     path::PathBuf,
-    process::Command,
+    process::{Command, Stdio},
 };
 
 /// Configuration settings tied to rc.d services
@@ -116,7 +116,12 @@ fn service_dir_path() -> PathBuf {
 }
 
 fn rc_d_script(cmd: &str, service: &str) -> io::Result<()> {
-    let output = Command::new(rc_d_script_path(service)).arg(cmd).output()?;
+    let output = Command::new(rc_d_script_path(service))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .arg(cmd)
+        .output()?;
 
     if output.status.success() {
         Ok(())

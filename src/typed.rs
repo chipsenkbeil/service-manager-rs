@@ -1,36 +1,27 @@
 use super::{
+    LaunchdServiceManager, OpenRcServiceManager, RcdServiceManager, ScServiceManager,
     ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceManagerKind, ServiceStartCtx,
-    ServiceStopCtx, ServiceUninstallCtx,
+    ServiceStopCtx, ServiceUninstallCtx, SystemdServiceManager,
 };
 use std::io;
 
 /// Represents an implementation of a known [`ServiceManager`]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypedServiceManager {
-    #[cfg(target_os = "macos")]
-    Launchd(super::LaunchdServiceManager),
-    #[cfg(unix)]
-    OpenRc(super::OpenRcServiceManager),
-    #[cfg(unix)]
-    Rcd(super::RcdServiceManager),
-    #[cfg(windows)]
-    Sc(super::ScServiceManager),
-    #[cfg(unix)]
-    Systemd(super::SystemdServiceManager),
+    Launchd(LaunchdServiceManager),
+    OpenRc(OpenRcServiceManager),
+    Rcd(RcdServiceManager),
+    Sc(ScServiceManager),
+    Systemd(SystemdServiceManager),
 }
 
 macro_rules! using {
     ($self:ident, $this:ident -> $expr:expr) => {{
         match $self {
-            #[cfg(target_os = "macos")]
             TypedServiceManager::Launchd($this) => $expr,
-            #[cfg(unix)]
             TypedServiceManager::OpenRc($this) => $expr,
-            #[cfg(unix)]
             TypedServiceManager::Rcd($this) => $expr,
-            #[cfg(windows)]
             TypedServiceManager::Sc($this) => $expr,
-            #[cfg(unix)]
             TypedServiceManager::Systemd($this) => $expr,
         }
     }};
@@ -80,16 +71,11 @@ impl TypedServiceManager {
     /// default service manager instance
     pub fn target(kind: ServiceManagerKind) -> Self {
         match kind {
-            #[cfg(target_os = "macos")]
-            ServiceManagerKind::Launchd => Self::Launchd(super::LaunchdServiceManager::default()),
-            #[cfg(unix)]
-            ServiceManagerKind::OpenRc => Self::OpenRc(super::OpenRcServiceManager::default()),
-            #[cfg(unix)]
-            ServiceManagerKind::Rcd => Self::Rcd(super::RcdServiceManager::default()),
-            #[cfg(windows)]
-            ServiceManagerKind::Sc => Self::Sc(super::ScServiceManager::default()),
-            #[cfg(unix)]
-            ServiceManagerKind::Systemd => Self::Systemd(super::SystemdServiceManager::default()),
+            ServiceManagerKind::Launchd => Self::Launchd(LaunchdServiceManager::default()),
+            ServiceManagerKind::OpenRc => Self::OpenRc(OpenRcServiceManager::default()),
+            ServiceManagerKind::Rcd => Self::Rcd(RcdServiceManager::default()),
+            ServiceManagerKind::Sc => Self::Sc(ScServiceManager::default()),
+            ServiceManagerKind::Systemd => Self::Systemd(SystemdServiceManager::default()),
         }
     }
 
@@ -109,65 +95,55 @@ impl TypedServiceManager {
     }
 
     /// Returns true if [`ServiceManager`] instance is for `launchd`
-    #[cfg(target_os = "macos")]
     pub fn is_launchd(&self) -> bool {
         matches!(self, Self::Launchd(_))
     }
 
     /// Returns true if [`ServiceManager`] instance is for `OpenRC`
-    #[cfg(unix)]
     pub fn is_openrc(&self) -> bool {
         matches!(self, Self::OpenRc(_))
     }
 
     /// Returns true if [`ServiceManager`] instance is for `rc.d`
-    #[cfg(unix)]
     pub fn is_rc_d(&self) -> bool {
         matches!(self, Self::Rcd(_))
     }
 
     /// Returns true if [`ServiceManager`] instance is for `sc`
-    #[cfg(windows)]
     pub fn is_sc(&self) -> bool {
         matches!(self, Self::Sc(_))
     }
 
     /// Returns true if [`ServiceManager`] instance is for `systemd`
-    #[cfg(unix)]
     pub fn is_systemd(&self) -> bool {
         matches!(self, Self::Systemd(_))
     }
 }
 
-#[cfg(target_os = "macos")]
 impl From<super::LaunchdServiceManager> for TypedServiceManager {
     fn from(manager: super::LaunchdServiceManager) -> Self {
         Self::Launchd(manager)
     }
 }
 
-#[cfg(unix)]
 impl From<super::OpenRcServiceManager> for TypedServiceManager {
     fn from(manager: super::OpenRcServiceManager) -> Self {
         Self::OpenRc(manager)
     }
 }
 
-#[cfg(unix)]
 impl From<super::RcdServiceManager> for TypedServiceManager {
     fn from(manager: super::RcdServiceManager) -> Self {
         Self::Rcd(manager)
     }
 }
 
-#[cfg(windows)]
 impl From<super::ScServiceManager> for TypedServiceManager {
     fn from(manager: super::ScServiceManager) -> Self {
         Self::Sc(manager)
     }
 }
 
-#[cfg(unix)]
 impl From<super::SystemdServiceManager> for TypedServiceManager {
     fn from(manager: super::SystemdServiceManager) -> Self {
         Self::Systemd(manager)

@@ -8,23 +8,18 @@ use std::io;
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum ServiceManagerKind {
     /// Use launchd to manage the service
-    #[cfg(target_os = "macos")]
     Launchd,
 
     /// Use OpenRC to manage the service
-    #[cfg(unix)]
     OpenRc,
 
     /// Use rc.d to manage the service
-    #[cfg(unix)]
     Rcd,
 
     /// Use Windows service controller to manage the service
-    #[cfg(windows)]
     Sc,
 
     /// Use systemd to manage the service
-    #[cfg(unix)]
     Systemd,
 }
 
