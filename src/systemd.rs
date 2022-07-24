@@ -281,9 +281,12 @@ fn make_service(
         let _ = writeln!(service, "RestartSec={x}");
     }
 
-    if !user {
-        service.push_str("[Install]\n");
-        service.push_str("WantedBy=multi-user.target\n");
+    let _ = writeln!(service, "[Install]");
+
+    if user {
+        let _ = writeln!(service, "WantedBy=default.target");
+    } else {
+        let _ = writeln!(service, "WantedBy=multi-user.target");
     }
 
     service.trim().to_string()
