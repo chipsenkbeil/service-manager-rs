@@ -1,14 +1,16 @@
 use super::{
-    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
+    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
 use std::{
     ffi::{OsStr, OsString},
-    fs::OpenOptions,
-    io::{self, Write},
+    io,
     path::PathBuf,
     process::{Command, Stdio},
 };
+
+// NOTE: On FreeBSD, /etc/rc.d/{script} has permissions of r-xr-xr-x (555)
+const SCRIPT_FILE_PERMISSIONS: u32 = 0o555;
 
 /// Configuration settings tied to rc.d services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -46,30 +48,11 @@ impl ServiceManager for RcdServiceManager {
         let service = ctx.label.to_script_name();
         let script = make_script(&service, &service, ctx.program.as_os_str(), ctx.args);
 
-        // Create our script and ensure it is executable; fail if a script
-        // exists at the location because we don't want to break something
-        // and because OpenOptionsExt's mode(...) won't overwrite the
-        // permissions of an existing file. We'd have to separately use
-        // PermissionsExt to update those permissions if we wanted to
-        // change an existing file's permissions
-        //
-        // NOTE: On FreeBSD, /etc/rc.d/{script} has permissions of r-xr-xr-x (555)
-        let mut opts = OpenOptions::new();
-        opts.create_new(true).write(true);
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o555);
-        }
-
-        let mut file = opts.open(rc_d_script_path(&service))?;
-        file.write_all(script.as_bytes())?;
-
-        // Ensure that the data/metadata is synced and catch errors before dropping
-        // NOTE: Dropping to ensure that file is available for rc.d enable
-        file.sync_all()?;
-        drop(file);
+        utils::write_file(
+            &rc_d_script_path(&service),
+            script.as_bytes(),
+            SCRIPT_FILE_PERMISSIONS,
+        )?;
 
         rc_d_script("enable", &service)
     }

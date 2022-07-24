@@ -12,6 +12,7 @@ mod rcd;
 mod sc;
 mod systemd;
 mod typed;
+mod utils;
 
 pub use kind::ServiceManagerKind;
 pub use launchd::LaunchdServiceManager;

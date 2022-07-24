@@ -1,5 +1,5 @@
 use super::{
-    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
+    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
 use std::{
@@ -10,6 +10,7 @@ use std::{
 };
 
 static LAUNCHCTL: &str = "launchctl";
+const PLIST_FILE_PERMISSIONS: u32 = 0o644;
 
 /// Configuration settings tied to launchd services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -97,7 +98,12 @@ impl ServiceManager for LaunchdServiceManager {
         let qualified_name = ctx.label.to_qualified_name();
         let plist_path = dir_path.join(format!("{}.plist", qualified_name));
         let plist = make_plist(&self.config.install, &qualified_name, ctx.cmd_iter());
-        std::fs::write(plist_path.as_path(), plist)?;
+
+        utils::write_file(
+            plist_path.as_path(),
+            plist.as_bytes(),
+            PLIST_FILE_PERMISSIONS,
+        )?;
 
         launchctl("load", plist_path.to_string_lossy().as_ref())
     }

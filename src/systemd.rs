@@ -1,5 +1,5 @@
 use super::{
-    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
+    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
 use std::{
@@ -10,6 +10,7 @@ use std::{
 };
 
 static SYSTEMCTL: &str = "systemctl";
+const SERVICE_FILE_PERMISSIONS: u32 = 0o644;
 
 /// Configuration settings tied to systemd services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -87,7 +88,12 @@ impl ServiceManager for SystemdServiceManager {
             ctx.args,
             self.user,
         );
-        std::fs::write(script_path.as_path(), service)?;
+
+        utils::write_file(
+            script_path.as_path(),
+            service.as_bytes(),
+            SERVICE_FILE_PERMISSIONS,
+        )?;
 
         systemctl("enable", script_path.to_string_lossy().as_ref(), self.user)
     }

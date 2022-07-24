@@ -1,17 +1,19 @@
 use super::{
-    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
+    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
 use std::{
     ffi::{OsStr, OsString},
-    fs::OpenOptions,
-    io::{self, Write},
+    io,
     path::PathBuf,
     process::{Command, Stdio},
 };
 
 static RC_SERVICE: &str = "rc-service";
 static RC_UPDATE: &str = "rc-update";
+
+// NOTE: On Alpine Linux, /etc/init.d/{script} has permissions of rwxr-xr-x (755)
+const SCRIPT_FILE_PERMISSIONS: u32 = 0o755;
 
 /// Configuration settings tied to OpenRC services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -59,30 +61,11 @@ impl ServiceManager for OpenRcServiceManager {
             ctx.args,
         );
 
-        // Create our script and ensure it is executable; fail if a script
-        // exists at the location because we don't want to break something
-        // and because OpenOptionsExt's mode(...) won't overwrite the
-        // permissions of an existing file. We'd have to separately use
-        // PermissionsExt to update those permissions if we wanted to
-        // change an existing file's permissions
-        //
-        // NOTE: On Alpine Linux, /etc/init.d/{script} has permissions of rwxr-xr-x (755)
-        let mut opts = OpenOptions::new();
-        opts.create_new(true).write(true);
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o755);
-        }
-
-        let mut file = opts.open(script_path.as_path())?;
-        file.write_all(script.as_bytes())?;
-
-        // Ensure that the data/metadata is synced and catch errors before dropping
-        // NOTE: Dropping to ensure that file is available for rc-update
-        file.sync_all()?;
-        drop(file);
+        utils::write_file(
+            script_path.as_path(),
+            script.as_bytes(),
+            SCRIPT_FILE_PERMISSIONS,
+        )?;
 
         rc_update("add", &script_name)
     }
