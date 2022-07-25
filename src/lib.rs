@@ -14,13 +14,13 @@ mod systemd;
 mod typed;
 mod utils;
 
-pub use kind::ServiceManagerKind;
-pub use launchd::LaunchdServiceManager;
-pub use openrc::OpenRcServiceManager;
-pub use rcd::RcdServiceManager;
-pub use sc::ScServiceManager;
-pub use systemd::SystemdServiceManager;
-pub use typed::TypedServiceManager;
+pub use kind::*;
+pub use launchd::*;
+pub use openrc::*;
+pub use rcd::*;
+pub use sc::*;
+pub use systemd::*;
+pub use typed::*;
 
 /// Interface for a service manager
 pub trait ServiceManager {

@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Removed
 
+## [0.1.3] - 2022-07-24
+
+### Fixed
+
+- Exported config structs for individual service managers
+
 ## [0.1.2] - 2022-07-24
 
 ### Added
