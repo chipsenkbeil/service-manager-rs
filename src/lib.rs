@@ -95,12 +95,12 @@ pub struct ServiceLabel {
     /// Qualifier used for services tied to management systems like `launchd`
     ///
     /// E.g. `org` or `com`
-    pub qualifier: String,
+    pub qualifier: Option<String>,
 
     /// Organization associated with the service
     ///
     /// E.g. `example`
-    pub organization: String,
+    pub organization: Option<String>,
 
     /// Application name associated with the service
     ///
@@ -111,27 +111,36 @@ pub struct ServiceLabel {
 impl ServiceLabel {
     /// Produces a fully-qualified name in the form of `{qualifier}.{organization}.{application}`
     pub fn to_qualified_name(&self) -> String {
-        format!(
-            "{}.{}.{}",
-            self.qualifier, self.organization, self.application
-        )
+        let mut qualified_name = String::new(); 
+        if let Some(qualifier) = self.qualifier.as_ref() {
+            qualified_name.push_str(qualifier.as_str());
+            qualified_name.push('.');
+        }
+        if let Some(organization) = self.organization.as_ref() {
+            qualified_name.push_str(organization.as_str());
+            qualified_name.push('.');
+        }
+        qualified_name.push_str(self.application.as_str());
+        qualified_name
     }
 
     /// Produces a script name using the organization and application
     /// in the form of `{organization}-{application}`
     pub fn to_script_name(&self) -> String {
-        format!("{}-{}", self.organization, self.application)
+        let mut script_name = String::new();
+        if let Some(organization) = self.organization.as_ref() {
+            script_name.push_str(organization.as_str());
+            script_name.push('-');
+        }
+        script_name.push_str(self.application.as_str());
+        script_name
     }
 }
 
 impl fmt::Display for ServiceLabel {
     /// Produces a fully-qualified name
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}.{}.{}",
-            self.qualifier, self.organization, self.application
-        )
+        f.write_str(self.to_qualified_name().as_str())
     }
 }
 
@@ -141,21 +150,31 @@ impl FromStr for ServiceLabel {
     /// Parses a fully-qualified name in the form of `{qualifier}.{organization}.{application}`
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let tokens = s.split('.').collect::<Vec<&str>>();
-        if tokens.len() != 3 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                concat!(
-                    "Unexpected token count! ",
-                    "Expected 3 items in the form {qualifier}.{organization}.{application}"
-                ),
-            ));
-        }
 
-        Ok(Self {
-            qualifier: tokens[0].to_string(),
-            organization: tokens[1].to_string(),
-            application: tokens[2].to_string(),
-        })
+        let label = match tokens.len() {
+            1 => Self {
+                qualifier: None,
+                organization: None,
+                application: tokens[0].to_string(),
+            },
+            2 => Self {
+                qualifier: None,
+                organization: Some(tokens[0].to_string()),
+                application: tokens[1].to_string(),
+            },
+            3 => Self {
+                qualifier: Some(tokens[0].to_string()),
+                organization: Some(tokens[1].to_string()),
+                application: tokens[2].to_string(),
+            },
+            _ => Self {
+                qualifier: Some(tokens[0].to_string()),
+                organization: Some(tokens[1].to_string()),
+                application: (&tokens[2..]).join("."),
+            }
+        };
+
+        Ok(label)
     }
 }
 
@@ -211,4 +230,47 @@ pub struct ServiceStopCtx {
     ///
     /// E.g. `rocks.distant.manager`
     pub label: ServiceLabel,
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_service_label_parssing_1() {
+        let label = ServiceLabel::from_str("com.example.app123").unwrap();
+
+        assert_eq!(label.qualifier, Some("com".to_string()));
+        assert_eq!(label.organization, Some("example".to_string()));
+        assert_eq!(label.application, "app123".to_string());
+
+        assert_eq!(label.to_qualified_name(), "com.example.app123");
+        assert_eq!(label.to_script_name(), "example-app123");
+    }
+
+    #[test]
+    fn test_service_label_parssing_2() {
+        let label = ServiceLabel::from_str("example.app123").unwrap();
+
+        assert_eq!(label.qualifier, None);
+        assert_eq!(label.organization, Some("example".to_string()));
+        assert_eq!(label.application, "app123".to_string());
+
+        assert_eq!(label.to_qualified_name(), "example.app123");
+        assert_eq!(label.to_script_name(), "example-app123");
+    }
+
+    #[test]
+    fn test_service_label_parssing_3() {
+        let label = ServiceLabel::from_str("app123").unwrap();
+
+        assert_eq!(label.qualifier, None);
+        assert_eq!(label.organization, None);
+        assert_eq!(label.application, "app123".to_string());
+
+        assert_eq!(label.to_qualified_name(), "app123");
+        assert_eq!(label.to_script_name(), "app123");
+    }
+
 }
