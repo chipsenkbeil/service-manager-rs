@@ -69,8 +69,20 @@ impl dyn ServiceManager {
     /// * For BSD variants, this will use [`RcdServiceManager`]
     /// * For Linux variants, this will use either [`SystemdServiceManager`] or [`OpenRcServiceManager`]
     pub fn native() -> io::Result<Box<dyn ServiceManager>> {
-        Ok(TypedServiceManager::native()?.into_box())
+        native_service_manager()
     }
+}
+
+
+    /// Attempts to select a native service manager for the current operating system1
+    ///
+    /// * For MacOS, this will use [`LaunchdServiceManager`]
+    /// * For Windows, this will use [`ScServiceManager`]
+    /// * For BSD variants, this will use [`RcdServiceManager`]
+    /// * For Linux variants, this will use either [`SystemdServiceManager`] or [`OpenRcServiceManager`]
+#[inline]
+pub fn native_service_manager() -> io::Result<Box<dyn ServiceManager>> {
+    Ok(TypedServiceManager::native()?.into_box())
 }
 
 impl<'a, S> From<S> for Box<dyn ServiceManager + 'a>
