@@ -54,12 +54,15 @@ impl ServiceManager for OpenRcServiceManager {
         let script_name = ctx.label.to_script_name();
         let script_path = dir_path.join(&script_name);
 
-        let script = make_script(
-            &script_name,
-            &script_name,
-            ctx.program.as_os_str(),
-            ctx.args,
-        );
+        let script = match ctx.contents {
+            Some(contents) => contents,
+            _ => make_script(
+                &script_name,
+                &script_name,
+                ctx.program.as_os_str(),
+                ctx.args,
+            ),
+        };
 
         utils::write_file(
             script_path.as_path(),

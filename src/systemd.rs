@@ -135,13 +135,16 @@ impl ServiceManager for SystemdServiceManager {
 
         let script_name = ctx.label.to_script_name();
         let script_path = dir_path.join(format!("{script_name}.service"));
-        let service = make_service(
-            &self.config.install,
-            &script_name,
-            ctx.program.into_os_string(),
-            ctx.args,
-            self.user,
-        );
+        let service = match ctx.contents {
+            Some(contents) => contents,
+            _ => make_service(
+                &self.config.install,
+                &script_name,
+                ctx.program.into_os_string(),
+                ctx.args,
+                self.user,
+            ),
+        };
 
         utils::write_file(
             script_path.as_path(),

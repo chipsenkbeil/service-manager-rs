@@ -73,13 +73,12 @@ impl dyn ServiceManager {
     }
 }
 
-
-    /// Attempts to select a native service manager for the current operating system1
-    ///
-    /// * For MacOS, this will use [`LaunchdServiceManager`]
-    /// * For Windows, this will use [`ScServiceManager`]
-    /// * For BSD variants, this will use [`RcdServiceManager`]
-    /// * For Linux variants, this will use either [`SystemdServiceManager`] or [`OpenRcServiceManager`]
+/// Attempts to select a native service manager for the current operating system1
+///
+/// * For MacOS, this will use [`LaunchdServiceManager`]
+/// * For Windows, this will use [`ScServiceManager`]
+/// * For BSD variants, this will use [`RcdServiceManager`]
+/// * For Linux variants, this will use either [`SystemdServiceManager`] or [`OpenRcServiceManager`]
 #[inline]
 pub fn native_service_manager() -> io::Result<Box<dyn ServiceManager>> {
     Ok(TypedServiceManager::native()?.into_box())
@@ -123,7 +122,7 @@ pub struct ServiceLabel {
 impl ServiceLabel {
     /// Produces a fully-qualified name in the form of `{qualifier}.{organization}.{application}`
     pub fn to_qualified_name(&self) -> String {
-        let mut qualified_name = String::new(); 
+        let mut qualified_name = String::new();
         if let Some(qualifier) = self.qualifier.as_ref() {
             qualified_name.push_str(qualifier.as_str());
             qualified_name.push('.');
@@ -182,8 +181,8 @@ impl FromStr for ServiceLabel {
             _ => Self {
                 qualifier: Some(tokens[0].to_string()),
                 organization: Some(tokens[1].to_string()),
-                application: (&tokens[2..]).join("."),
-            }
+                application: tokens[2..].join("."),
+            },
         };
 
         Ok(label)
@@ -206,6 +205,10 @@ pub struct ServiceInstallCtx {
     ///
     /// E.g. `--arg`, `value`, `--another-arg`
     pub args: Vec<OsString>,
+
+    /// Optional contents of the service file for a given ServiceManager
+    /// to use instead of the default template.
+    pub contents: Option<String>,
 }
 
 impl ServiceInstallCtx {
@@ -243,7 +246,6 @@ pub struct ServiceStopCtx {
     /// E.g. `rocks.distant.manager`
     pub label: ServiceLabel,
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -284,5 +286,4 @@ mod tests {
         assert_eq!(label.to_qualified_name(), "app123");
         assert_eq!(label.to_script_name(), "app123");
     }
-
 }

@@ -48,7 +48,10 @@ impl ServiceManager for RcdServiceManager {
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
         let service = ctx.label.to_script_name();
-        let script = make_script(&service, &service, ctx.program.as_os_str(), ctx.args);
+        let script = match ctx.contents {
+            Some(contents) => contents,
+            _ => make_script(&service, &service, ctx.program.as_os_str(), ctx.args),
+        };
 
         utils::write_file(
             &rc_d_script_path(&service),

@@ -97,7 +97,10 @@ impl ServiceManager for LaunchdServiceManager {
 
         let qualified_name = ctx.label.to_qualified_name();
         let plist_path = dir_path.join(format!("{}.plist", qualified_name));
-        let plist = make_plist(&self.config.install, &qualified_name, ctx.cmd_iter());
+        let plist = match ctx.contents {
+            Some(contents) => contents,
+            _ => make_plist(&self.config.install, &qualified_name, ctx.cmd_iter()),
+        };
 
         utils::write_file(
             plist_path.as_path(),
