@@ -62,6 +62,7 @@ manager.install(ServiceInstallCtx {
     label: label.clone(),
     program: PathBuf::from("path/to/my-service-executable"),
     args: vec![OsString::from("--some-arg")],
+    content: None, // Optional String for system-specific service content.
 }).expect("Failed to install");
 
 // Start our service using the underlying service management platform
@@ -130,6 +131,7 @@ manager.install(ServiceInstallCtx {
     label: label.clone(),
     program: PathBuf::from("path/to/my-service-executable"),
     args: vec![OsString::from("--some-arg")],
+    content: None, // Optional String for system-specific service content.
 }).expect("Failed to install");
 ```
 

@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Removed
 
+## [0.3.0] - 2023-06-08
+
+### Added
+
+- Add .contents to ServiceInstallCtx to use in place of the make_* templates
+  This is a backwards incompatible change.
+
 ## [0.1.3] - 2022-07-24
 
 ### Fixed

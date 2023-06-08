@@ -61,6 +61,7 @@ pub fn run_test(manager: &TypedServiceManager) {
                     .join(format!("{service_label}.log"))
                     .into_os_string(),
             ],
+            contents: None,
         })
         .unwrap();
 
