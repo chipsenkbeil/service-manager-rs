@@ -30,7 +30,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-service-manager = "0.1"
+service-manager = "0.3"
 ```
 
 ## Examples
@@ -46,9 +46,10 @@ instance provides four key methods:
 * `start` - will start an installed service specified by a given context
 * `stop` - will stop a running service specified by a given context
 
-```rust
+```rust,no_run
 use service_manager::*;
-use std::{ffi::OsString, path::PathBuf};
+use std::ffi::OsString;
+use std::path::PathBuf;
 
 // Create a label for our service
 let label: ServiceLabel = "com.example.my-service".parse().unwrap();
@@ -62,7 +63,7 @@ manager.install(ServiceInstallCtx {
     label: label.clone(),
     program: PathBuf::from("path/to/my-service-executable"),
     args: vec![OsString::from("--some-arg")],
-    content: None, // Optional String for system-specific service content.
+    contents: None, // Optional String for system-specific service content.
 }).expect("Failed to install");
 
 // Start our service using the underlying service management platform
@@ -89,7 +90,7 @@ services; however, some service management platforms like `systemd` and
 user level, you configure your manager using the generic
 `ServiceManager::set_level` function.
 
-```rust
+```rust,no_run
 use service_manager::*;
 
 // Create a label for our service
@@ -113,8 +114,10 @@ There are times where you need more control over the configuration of a
 service tied to a specific platform. To that end, you can create the service
 manager explicitly and set configuration properties appropriately.
 
-```rust
+```rust,no_run
 use service_manager::*;
+use std::ffi::OsString;
+use std::path::PathBuf;
 
 // Create a label for our service
 let label: ServiceLabel = "com.example.my-service".parse().unwrap();
@@ -131,7 +134,7 @@ manager.install(ServiceInstallCtx {
     label: label.clone(),
     program: PathBuf::from("path/to/my-service-executable"),
     args: vec![OsString::from("--some-arg")],
-    content: None, // Optional String for system-specific service content.
+    contents: None, // Optional String for system-specific service content.
 }).expect("Failed to install");
 ```
 
