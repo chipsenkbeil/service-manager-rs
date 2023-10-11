@@ -64,6 +64,7 @@ manager.install(ServiceInstallCtx {
     program: PathBuf::from("path/to/my-service-executable"),
     args: vec![OsString::from("--some-arg")],
     contents: None, // Optional String for system-specific service content.
+    username: None, // Optionally specify running the service as a specific user.
 }).expect("Failed to install");
 
 // Start our service using the underlying service management platform

@@ -2,6 +2,8 @@ use super::{
     utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
+use plist::Dictionary;
+use plist::Value;
 use std::{
     ffi::OsStr,
     io,
@@ -99,7 +101,12 @@ impl ServiceManager for LaunchdServiceManager {
         let plist_path = dir_path.join(format!("{}.plist", qualified_name));
         let plist = match ctx.contents {
             Some(contents) => contents,
-            _ => make_plist(&self.config.install, &qualified_name, ctx.cmd_iter()),
+            _ => make_plist(
+                &self.config.install,
+                &qualified_name,
+                ctx.cmd_iter(),
+                ctx.username.clone(),
+            ),
         };
 
         utils::write_file(
@@ -192,26 +199,29 @@ fn make_plist<'a>(
     config: &LaunchdInstallConfig,
     label: &str,
     args: impl Iterator<Item = &'a OsStr>,
+    username: Option<String>,
 ) -> String {
-    let LaunchdInstallConfig { keep_alive } = config;
-    let args = args
-        .map(|arg| format!("<string>{}</string>", arg.to_string_lossy()))
-        .collect::<Vec<String>>()
-        .join("");
-    format!(r#"
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-    <dict>
-        <key>Label</key>
-        <string>{label}</string>
-        <key>ProgramArguments</key>
-        <array>
-            {args}
-        </array>
-        <key>KeepAlive</key>
-        <{keep_alive}/>
-    </dict>
-</plist>
-"#).trim().to_string()
+    let mut dict = Dictionary::new();
+
+    dict.insert("Label".to_string(), Value::String(label.to_string()));
+
+    let program_arguments: Vec<Value> = args
+        .map(|arg| Value::String(arg.to_string_lossy().into_owned()))
+        .collect();
+    dict.insert(
+        "ProgramArguments".to_string(),
+        Value::Array(program_arguments),
+    );
+
+    dict.insert("KeepAlive".to_string(), Value::Boolean(config.keep_alive));
+
+    if let Some(username) = username {
+        dict.insert("UserName".to_string(), Value::String(username));
+    }
+
+    let plist = Value::Dictionary(dict);
+
+    let mut buffer = Vec::new();
+    plist.to_writer_xml(&mut buffer).unwrap();
+    String::from_utf8(buffer).unwrap()
 }

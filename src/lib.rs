@@ -215,6 +215,11 @@ pub struct ServiceInstallCtx {
     /// Optional contents of the service file for a given ServiceManager
     /// to use instead of the default template.
     pub contents: Option<String>,
+
+    /// Optionally supply the user the service will run as
+    ///
+    /// If not specified, the service will run as the root or Administrator user.
+    pub username: Option<String>,
 }
 
 impl ServiceInstallCtx {
