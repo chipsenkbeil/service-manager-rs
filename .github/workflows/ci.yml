@@ -66,14 +66,18 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
-        uses: vmactions/freebsd-vm@v0.2.0
+        uses: cross-platform-actions/action@v0.19.1
         with:
-          usesh: true
-          envs: 'IGNORE_OSVERSION'
-          prepare: pkg install -y curl && curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+          operating_system: freebsd
+          version: '13.2'
+          environment_variables: IGNORE_OSVERSION
+          shell: bash
           run: |
+            sudo pkg install -y curl && \
+              curl https://sh.rustup.rs -sSf | \
+              sh -s -- -y --profile minimal
             . "$HOME/.cargo/env"
-            cargo test -p system-tests ${{ matrix.test }} -- --nocapture
+            sudo --preserve-env cargo test -p system-tests ${{ matrix.test }} -- --nocapture
   test-alpine-openrc:
     name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (Alpine Linux)"
     runs-on: ubuntu-latest
