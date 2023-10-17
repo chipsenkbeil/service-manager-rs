@@ -56,6 +56,8 @@ jobs:
   test-freebsd:
     name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (FreeBSD)"
     runs-on: macos-12
+    env:
+      IGNORE_OSVERSION: yes
     strategy:
       fail-fast: false
       matrix:
@@ -67,6 +69,7 @@ jobs:
         uses: vmactions/freebsd-vm@v0.2.0
         with:
           usesh: true
+          envs: 'IGNORE_OSVERSION'
           prepare: pkg install -y curl && curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
           run: |
             . "$HOME/.cargo/env"
