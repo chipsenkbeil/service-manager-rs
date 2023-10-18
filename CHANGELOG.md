@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Removed
 
+## [0.4.0] - 2023-10-19
+
+### Added
+
+- The `ServiceInstallCtx` is extended with a `username` field to support
+  running services as a specific user. For now, only systemd and launchd are
+  supported, but it has the potential to be used with Windows. This is a
+  backwards incompatible change.
+
 ## [0.3.0] - 2023-06-08
 
 ### Added
