@@ -126,9 +126,9 @@ impl ServiceManager for SystemdServiceManager {
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
         let dir_path = if self.user {
-            user_dir_path()?
+            systemd_user_dir_path()?
         } else {
-            global_dir_path()
+            systemd_global_dir_path()
         };
 
         std::fs::create_dir_all(&dir_path)?;
@@ -143,6 +143,7 @@ impl ServiceManager for SystemdServiceManager {
                 ctx.program.into_os_string(),
                 ctx.args,
                 self.user,
+                ctx.username,
             ),
         };
 
@@ -157,9 +158,9 @@ impl ServiceManager for SystemdServiceManager {
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
         let dir_path = if self.user {
-            user_dir_path()?
+            systemd_user_dir_path()?
         } else {
-            global_dir_path()
+            systemd_global_dir_path()
         };
         let script_name = ctx.label.to_script_name();
         let script_path = dir_path.join(format!("{script_name}.service"));
@@ -228,11 +229,11 @@ fn systemctl(cmd: &str, label: &str, user: bool) -> io::Result<()> {
 }
 
 #[inline]
-fn global_dir_path() -> PathBuf {
+pub fn systemd_global_dir_path() -> PathBuf {
     PathBuf::from("/etc/systemd/system")
 }
 
-fn user_dir_path() -> io::Result<PathBuf> {
+pub fn systemd_user_dir_path() -> io::Result<PathBuf> {
     Ok(dirs::config_dir()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Unable to locate home directory"))?
         .join("systemd")
@@ -245,6 +246,7 @@ fn make_service(
     program: OsString,
     args: Vec<OsString>,
     user: bool,
+    username: Option<String>,
 ) -> String {
     use std::fmt::Write as _;
     let SystemdInstallConfig {
@@ -282,6 +284,9 @@ fn make_service(
 
     if let Some(x) = restart_sec {
         let _ = writeln!(service, "RestartSec={x}");
+    }
+    if let Some(username) = username {
+        let _ = writeln!(service, "User={username}");
     }
 
     let _ = writeln!(service, "[Install]");
