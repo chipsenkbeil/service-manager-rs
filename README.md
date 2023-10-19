@@ -30,7 +30,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-service-manager = "0.3"
+service-manager = "0.4"
 ```
 
 ## Examples
@@ -64,7 +64,7 @@ manager.install(ServiceInstallCtx {
     program: PathBuf::from("path/to/my-service-executable"),
     args: vec![OsString::from("--some-arg")],
     contents: None, // Optional String for system-specific service content.
-    username: None, // Optionally specify running the service as a specific user.
+    username: None, // Optional String for alternative user to run service.
 }).expect("Failed to install");
 
 // Start our service using the underlying service management platform
@@ -136,6 +136,7 @@ manager.install(ServiceInstallCtx {
     program: PathBuf::from("path/to/my-service-executable"),
     args: vec![OsString::from("--some-arg")],
     contents: None, // Optional String for system-specific service content.
+    username: None, // Optional String for alternative user to run service.
 }).expect("Failed to install");
 ```
 

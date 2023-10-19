@@ -29,6 +29,18 @@ jobs:
       - uses: Swatinem/rust-cache@v1
       - name: Build against Rust ${{ matrix.rust }}
         run: cargo build --release
+  unit_tests:
+    name: "Unit tests for Rust stable"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust ${{ matrix.rust }}
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v1
+      - run: cargo test
   tests:
     name: "Test Rust ${{ matrix.rust }} for ${{ matrix.test }} w/ ${{ matrix.manager }} (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
