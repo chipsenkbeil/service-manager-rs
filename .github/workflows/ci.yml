@@ -65,42 +65,33 @@ jobs:
         run: |
           ${{ matrix.elevated }} rustup default stable
           ${{ matrix.elevated }} cargo test -p system-tests ${{ matrix.test }} -- --nocapture
-  #
-  # ~~~ NOTE ~~~
-  # The old version of FreeBSD vm seemed to fail and get into boot loops unexpectedly. When
-  # switching to cross-platform-actions/action, we're hitting an issue with freezing and
-  # occasionally failure to sync files back during teardown. I suspect the freezing is also
-  # the teardown getting stuck.
-  #
-  # This can be re-enabled once this issue is resolved:
-  # https://github.com/cross-platform-actions/action/issues/61
-  # ~~~~~~~~~~~~
-  #
-  # test-freebsd:
-  #   name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (FreeBSD)"
-  #   runs-on: macos-12
-  #   env:
-  #     IGNORE_OSVERSION: yes
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       include:
-  #         - { manager: rc.d, test: rc_d_for_system }
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
-  #       uses: cross-platform-actions/action@v0.19.1
-  #       with:
-  #         operating_system: freebsd
-  #         version: '13.2'
-  #         environment_variables: IGNORE_OSVERSION
-  #         shell: bash
-  #         run: |
-  #           sudo pkg install -y curl && \
-  #             curl https://sh.rustup.rs -sSf | \
-  #             sh -s -- -y --profile minimal
-  #           . "$HOME/.cargo/env"
-  #           sudo --preserve-env cargo test -p system-tests ${{ matrix.test }} -- --nocapture
+  test-freebsd:
+    name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (FreeBSD)"
+    runs-on: macos-12
+    env:
+      IGNORE_OSVERSION: yes
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { manager: rc.d, test: rc_d_for_system }
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
+        uses: cross-platform-actions/action@v0.19.1
+        with:
+          operating_system: freebsd
+          version: '13.2'
+          environment_variables: IGNORE_OSVERSION
+          shell: bash
+          run: |
+            sudo pkg install -y curl && \
+              curl https://sh.rustup.rs -sSf | \
+              sh -s -- -y --profile minimal
+            . "$HOME/.cargo/env"
+            sudo --preserve-env cargo test -p system-tests ${{ matrix.test }} -- --nocapture
+            # Note: We need to delete target otherwise the vm teardown fails!
+            sudo rm -rf target/
   test-alpine-openrc:
     name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (Alpine Linux)"
     runs-on: ubuntu-latest

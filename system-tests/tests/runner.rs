@@ -195,11 +195,6 @@ fn is_service_using_the_specified_user(username: &str, service_label: ServiceLab
     false
 }
 
-#[cfg(target_os = "windows")]
-fn is_service_using_the_specified_user(_username: &str, _service_label: ServiceLabel) -> bool {
-    false
-}
-
 #[cfg(target_os = "macos")]
 fn is_service_using_the_specified_user(username: &str, service_label: ServiceLabel) -> bool {
     use plist::Value;
@@ -220,5 +215,11 @@ fn is_service_using_the_specified_user(username: &str, service_label: ServiceLab
             }
         }
     }
+    false
+}
+
+// For all other platforms (i.e. Windows, FreeBSD) we do not support specific users right now
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn is_service_using_the_specified_user(_username: &str, _service_label: ServiceLabel) -> bool {
     false
 }
