@@ -5,7 +5,7 @@ mod runner;
 const TEST_ITER_CNT: usize = 3;
 
 #[test]
-// #[cfg(target_os = "macos")]
+#[cfg(target_os = "macos")]
 fn should_support_launchd_for_system_services() {
     runner::run_test_n(LaunchdServiceManager::system(), TEST_ITER_CNT)
 }
@@ -63,6 +63,12 @@ fn should_support_rc_d_for_system_services() {
 #[cfg(target_os = "windows")]
 fn should_support_sc_for_system_services() {
     runner::run_test_n(ScServiceManager::system(), TEST_ITER_CNT)
+}
+
+#[test]
+#[cfg(target_os = "windows")]
+fn should_support_winsw_for_system_services() {
+    runner::run_test_n(WinSwServiceManager::system(), TEST_ITER_CNT)
 }
 
 #[test]

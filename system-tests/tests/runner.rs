@@ -76,20 +76,25 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
     eprintln!("Checking if service available");
     assert!(manager.available().unwrap(), "Service not available");
 
+    let mut args = vec![
+        OsString::from("listen"),
+        OsString::from(addr.to_string()),
+        OsString::from("--log-file"),
+        std::env::temp_dir()
+            .join(format!("{service_label}.log"))
+            .into_os_string(),
+    ];
+    if manager.is_sc() {
+        args.push(OsString::from("--run-as-windows-service"));
+    }
+
     // Install the service
     eprintln!("Installing service");
     manager
         .install(ServiceInstallCtx {
             label: service_label.clone(),
             program: temp_bin_path,
-            args: vec![
-                OsString::from("listen"),
-                OsString::from(addr.to_string()),
-                OsString::from("--log-file"),
-                std::env::temp_dir()
-                    .join(format!("{service_label}.log"))
-                    .into_os_string(),
-            ],
+            args,
             contents: None,
             username: username.clone(),
         })

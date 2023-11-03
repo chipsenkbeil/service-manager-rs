@@ -71,6 +71,10 @@ enum Action {
 
         /// Address to bind to over TCP
         addr: SocketAddr,
+
+        /// Set to true to run as a Windows service using sc.exe
+        #[clap(long)]
+        run_as_windows_service: bool,
     },
 }
 
@@ -78,6 +82,17 @@ impl Cli {
     #[cfg(windows)]
     pub fn is_listen_action(&self) -> bool {
         matches!(self.action, Action::Listen { .. })
+    }
+
+    #[cfg(windows)]
+    pub fn run_as_windows_service(&self) -> bool {
+        match self.action {
+            Action::Listen {
+                run_as_windows_service,
+                ..
+            } => run_as_windows_service,
+            _ => false,
+        }
     }
 
     /// Runs CLI to completion
@@ -129,7 +144,7 @@ impl Cli {
                 ))
             }
 
-            Action::Listen { addr, log_file } => {
+            Action::Listen { addr, log_file, .. } => {
                 let logger = Logger::new(log_file);
                 let handle = thread::spawn(move || {
                     let listener = TcpListener::bind(addr)?;
@@ -184,7 +199,11 @@ fn main() -> io::Result<()> {
 #[cfg(windows)]
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
-    if cli.is_listen_action() {
+    // We are either running the listener service through sc.exe or winsw.exe. For the former, the
+    // 'run as service' flag should be set to indicate that we need to use the boilerplate service
+    // infrastructure code. For the latter, the boilerplate is provided for you and therefore we
+    // must run without it.
+    if cli.is_listen_action() && cli.run_as_windows_service() {
         // Save a config for use by the service
         echo_service::Config {
             args: std::env::args_os().collect(),

@@ -21,3 +21,9 @@ dirs = "4.0"
 plist = "1.1"
 serde = { version = "1", features = ["derive"], optional = true }
 which = "4.0"
+xml-rs = "0.8.19"
+
+[dev-dependencies]
+assert_fs = "1.0.13"
+indoc = "2.0.4"
+predicates = "3.0.4"

@@ -19,6 +19,7 @@ mod sc;
 mod systemd;
 mod typed;
 mod utils;
+mod winsw;
 
 pub use kind::*;
 pub use launchd::*;
@@ -27,6 +28,7 @@ pub use rcd::*;
 pub use sc::*;
 pub use systemd::*;
 pub use typed::*;
+pub use winsw::*;
 
 /// Interface for a service manager
 pub trait ServiceManager {
