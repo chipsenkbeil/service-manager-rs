@@ -97,6 +97,8 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
             args,
             contents: None,
             username: username.clone(),
+            working_directory: None,
+            environment: None,
         })
         .unwrap();
 

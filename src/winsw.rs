@@ -162,6 +162,24 @@ impl WinSwServiceManager {
             .join(" ");
         Self::write_element(&mut writer, "arguments", &args)?;
 
+        if let Some(working_directory) = &ctx.working_directory {
+            Self::write_element(
+                &mut writer,
+                "workingdirectory",
+                &working_directory.to_string_lossy(),
+            )?;
+        }
+        if let Some(env_vars) = &ctx.environment {
+            for var in env_vars.iter() {
+                Self::write_element_with_attributes(
+                    &mut writer,
+                    "env",
+                    &[("name", &var.0), ("value", &var.1)],
+                    None,
+                )?;
+            }
+        }
+
         // Optional install elements
         let (action, delay) = match &config.install.failure_action {
             WinSwOnFailureAction::Restart(delay) => ("restart", delay.as_deref()),
@@ -483,6 +501,34 @@ mod tests {
         values
     }
 
+    fn get_environment_variables(xml: &str) -> Vec<(String, String)> {
+        let cursor = Cursor::new(xml);
+        let parser = EventReader::new(cursor);
+        let mut env_vars = Vec::new();
+
+        for e in parser {
+            if let Ok(XmlEvent::StartElement {
+                name, attributes, ..
+            }) = e
+            {
+                if name.local_name == "env" {
+                    let mut name_value_pair = (String::new(), String::new());
+                    for attr in attributes {
+                        match attr.name.local_name.as_str() {
+                            "name" => name_value_pair.0 = attr.value,
+                            "value" => name_value_pair.1 = attr.value,
+                            _ => {}
+                        }
+                    }
+                    if !name_value_pair.0.is_empty() && !name_value_pair.1.is_empty() {
+                        env_vars.push(name_value_pair);
+                    }
+                }
+            }
+        }
+        env_vars
+    }
+
     #[test]
     fn test_service_configuration_with_mandatory_elements() {
         let temp_dir = assert_fs::TempDir::new().unwrap();
@@ -498,6 +544,8 @@ mod tests {
             ],
             contents: None,
             username: None,
+            working_directory: None,
+            environment: None,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -541,6 +589,11 @@ mod tests {
             ],
             contents: None,
             username: None,
+            working_directory: Some(PathBuf::from("C:\\Program Files\\org.example")),
+            environment: Some(vec![
+                ("ENV1".to_string(), "val1".to_string()),
+                ("ENV2".to_string(), "val2".to_string()),
+            ]),
         };
 
         let config = WinSwConfig {
@@ -577,6 +630,7 @@ mod tests {
         .unwrap();
 
         let xml = std::fs::read_to_string(service_config_file.path()).unwrap();
+        println!("{xml}");
 
         service_config_file.assert(predicates::path::is_file());
         assert_eq!("org.example.my_service", get_element_value(&xml, "id"));
@@ -593,6 +647,16 @@ mod tests {
             "--arg value --another-arg",
             get_element_value(&xml, "arguments")
         );
+        assert_eq!(
+            "C:\\Program Files\\org.example",
+            get_element_value(&xml, "workingdirectory")
+        );
+
+        let attributes = get_environment_variables(&xml);
+        assert_eq!(attributes[0].0, "ENV1");
+        assert_eq!(attributes[0].1, "val1");
+        assert_eq!(attributes[1].0, "ENV2");
+        assert_eq!(attributes[1].1, "val2");
 
         // Install options
         assert_eq!(
@@ -655,6 +719,8 @@ mod tests {
             ],
             contents: Some(contents.to_string()),
             username: None,
+            working_directory: None,
+            environment: None,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -695,6 +761,8 @@ mod tests {
             ],
             contents: Some("this is not an XML document".to_string()),
             username: None,
+            working_directory: None,
+            environment: None,
         };
 
         let result = WinSwServiceManager::write_service_configuration(

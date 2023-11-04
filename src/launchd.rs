@@ -106,6 +106,8 @@ impl ServiceManager for LaunchdServiceManager {
                 &qualified_name,
                 ctx.cmd_iter(),
                 ctx.username.clone(),
+                ctx.working_directory.clone(),
+                ctx.environment.clone(),
             ),
         };
 
@@ -200,6 +202,8 @@ fn make_plist<'a>(
     label: &str,
     args: impl Iterator<Item = &'a OsStr>,
     username: Option<String>,
+    working_directory: Option<PathBuf>,
+    environment: Option<Vec<(String, String)>>,
 ) -> String {
     let mut dict = Dictionary::new();
 
@@ -217,6 +221,24 @@ fn make_plist<'a>(
 
     if let Some(username) = username {
         dict.insert("UserName".to_string(), Value::String(username));
+    }
+
+    if let Some(working_dir) = working_directory {
+        dict.insert(
+            "WorkingDirectory".to_string(),
+            Value::String(working_dir.to_string_lossy().to_string()),
+        );
+    }
+
+    if let Some(env_vars) = environment {
+        let env_dict: Dictionary = env_vars
+            .into_iter()
+            .map(|(k, v)| (k, Value::String(v)))
+            .collect();
+        dict.insert(
+            "EnvironmentVariables".to_string(),
+            Value::Dictionary(env_dict),
+        );
     }
 
     let plist = Value::Dictionary(dict);

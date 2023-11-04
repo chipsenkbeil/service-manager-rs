@@ -65,6 +65,8 @@ manager.install(ServiceInstallCtx {
     args: vec![OsString::from("--some-arg")],
     contents: None, // Optional String for system-specific service content.
     username: None, // Optional String for alternative user to run service.
+    working_directory: None, // Optional String for the working directory for the service process.
+    environment: None, // Optional list of environment variables to supply the service process.
 }).expect("Failed to install");
 
 // Start our service using the underlying service management platform
@@ -137,6 +139,8 @@ manager.install(ServiceInstallCtx {
     args: vec![OsString::from("--some-arg")],
     contents: None, // Optional String for system-specific service content.
     username: None, // Optional String for alternative user to run service.
+    working_directory: None, // Optional String for the working directory for the service process.
+    environment: None, // Optional list of environment variables to supply the service process.
 }).expect("Failed to install");
 ```
 
