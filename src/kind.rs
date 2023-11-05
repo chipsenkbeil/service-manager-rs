@@ -1,5 +1,5 @@
-use std::io;
 use cfg_if::cfg_if;
+use std::io;
 
 /// Represents the kind of service manager
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -22,6 +22,9 @@ pub enum ServiceManagerKind {
 
     /// Use systemd to manage the service
     Systemd,
+
+    /// Use WinSW to manage the service
+    WinSw,
 }
 
 impl ServiceManagerKind {
@@ -31,6 +34,15 @@ impl ServiceManagerKind {
             if #[cfg(target_os = "macos")] {
                 Ok(ServiceManagerKind::Launchd)
             } else if #[cfg(target_os = "windows")] {
+                use super::{ServiceManager, TypedServiceManager};
+
+                // Prefer WinSW over sc.exe, because if it's present, it's likely been explicitly
+                // installed as an alternative to sc.exe.
+                let manager = TypedServiceManager::target(ServiceManagerKind::WinSw);
+                if let Ok(true) = manager.available() {
+                    return Ok(ServiceManagerKind::WinSw);
+                }
+
                 Ok(ServiceManagerKind::Sc)
             } else if #[cfg(any(
                 target_os = "freebsd",
@@ -41,17 +53,17 @@ impl ServiceManagerKind {
                 Ok(ServiceManagerKind::Rcd)
             } else if #[cfg(target_os = "linux")] {
                 use super::{ServiceManager, TypedServiceManager};
-    
+
                 let manager = TypedServiceManager::target(ServiceManagerKind::Systemd);
                 if let Ok(true) = manager.available() {
                     return Ok(ServiceManagerKind::Systemd);
                 }
-        
+
                 let manager = TypedServiceManager::target(ServiceManagerKind::OpenRc);
                 if let Ok(true) = manager.available() {
                     return Ok(ServiceManagerKind::OpenRc);
                 }
-        
+
                 Err(io::Error::new(
                     io::ErrorKind::Unsupported,
                     "Only systemd and openrc are supported on Linux",
@@ -64,8 +76,4 @@ impl ServiceManagerKind {
             }
         }
     }
-    
 }
-
-
-

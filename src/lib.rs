@@ -19,6 +19,7 @@ mod sc;
 mod systemd;
 mod typed;
 mod utils;
+mod winsw;
 
 pub use kind::*;
 pub use launchd::*;
@@ -27,6 +28,7 @@ pub use rcd::*;
 pub use sc::*;
 pub use systemd::*;
 pub use typed::*;
+pub use winsw::*;
 
 /// Interface for a service manager
 pub trait ServiceManager {
@@ -220,6 +222,13 @@ pub struct ServiceInstallCtx {
     ///
     /// If not specified, the service will run as the root or Administrator user.
     pub username: Option<String>,
+
+    /// Optionally specify a working directory for the process launched by the service
+    pub working_directory: Option<PathBuf>,
+
+    /// Optionally specify a list of environment variables to be passed to the process launched by
+    /// the service
+    pub environment: Option<Vec<(String, String)>>,
 }
 
 impl ServiceInstallCtx {

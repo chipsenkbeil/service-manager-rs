@@ -1,7 +1,7 @@
 use super::{
     LaunchdServiceManager, OpenRcServiceManager, RcdServiceManager, ScServiceManager,
     ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceManagerKind, ServiceStartCtx,
-    ServiceStopCtx, ServiceUninstallCtx, SystemdServiceManager,
+    ServiceStopCtx, ServiceUninstallCtx, SystemdServiceManager, WinSwServiceManager,
 };
 use std::io;
 
@@ -13,6 +13,7 @@ pub enum TypedServiceManager {
     Rcd(RcdServiceManager),
     Sc(ScServiceManager),
     Systemd(SystemdServiceManager),
+    WinSw(WinSwServiceManager),
 }
 
 macro_rules! using {
@@ -23,6 +24,7 @@ macro_rules! using {
             TypedServiceManager::Rcd($this) => $expr,
             TypedServiceManager::Sc($this) => $expr,
             TypedServiceManager::Systemd($this) => $expr,
+            TypedServiceManager::WinSw($this) => $expr,
         }
     }};
 }
@@ -76,6 +78,7 @@ impl TypedServiceManager {
             ServiceManagerKind::Rcd => Self::Rcd(RcdServiceManager::default()),
             ServiceManagerKind::Sc => Self::Sc(ScServiceManager::default()),
             ServiceManagerKind::Systemd => Self::Systemd(SystemdServiceManager::default()),
+            ServiceManagerKind::WinSw => Self::WinSw(WinSwServiceManager::default()),
         }
     }
 
@@ -118,6 +121,11 @@ impl TypedServiceManager {
     pub fn is_systemd(&self) -> bool {
         matches!(self, Self::Systemd(_))
     }
+
+    /// Returns true if [`ServiceManager`] instance is for `winsw`
+    pub fn is_winsw(&self) -> bool {
+        matches!(self, Self::WinSw(_))
+    }
 }
 
 impl From<super::LaunchdServiceManager> for TypedServiceManager {
@@ -147,5 +155,11 @@ impl From<super::ScServiceManager> for TypedServiceManager {
 impl From<super::SystemdServiceManager> for TypedServiceManager {
     fn from(manager: super::SystemdServiceManager) -> Self {
         Self::Systemd(manager)
+    }
+}
+
+impl From<super::WinSwServiceManager> for TypedServiceManager {
+    fn from(manager: super::WinSwServiceManager) -> Self {
+        Self::WinSw(manager)
     }
 }

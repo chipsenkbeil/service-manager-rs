@@ -3,7 +3,6 @@ use super::{
     ServiceUninstallCtx,
 };
 use std::{
-    ffi::OsString,
     fmt, io,
     path::PathBuf,
     process::{Command, Stdio},
@@ -137,14 +136,7 @@ impl ServiceManager for SystemdServiceManager {
         let script_path = dir_path.join(format!("{script_name}.service"));
         let service = match ctx.contents {
             Some(contents) => contents,
-            _ => make_service(
-                &self.config.install,
-                &script_name,
-                ctx.program.into_os_string(),
-                ctx.args,
-                self.user,
-                ctx.username,
-            ),
+            _ => make_service(&self.config.install, &script_name, &ctx, self.user),
         };
 
         utils::write_file(
@@ -243,10 +235,8 @@ pub fn systemd_user_dir_path() -> io::Result<PathBuf> {
 fn make_service(
     config: &SystemdInstallConfig,
     description: &str,
-    program: OsString,
-    args: Vec<OsString>,
+    ctx: &ServiceInstallCtx,
     user: bool,
-    username: Option<String>,
 ) -> String {
     use std::fmt::Write as _;
     let SystemdInstallConfig {
@@ -269,9 +259,18 @@ fn make_service(
     }
 
     let _ = writeln!(service, "[Service]");
+    if let Some(working_directory) = &ctx.working_directory {
+        let _ = writeln!(
+            service,
+            "WorkingDirectory={}",
+            working_directory.to_string_lossy()
+        );
+    }
 
-    let program = program.to_string_lossy();
-    let args = args
+    let program = ctx.program.to_string_lossy();
+    let args = ctx
+        .args
+        .clone()
         .into_iter()
         .map(|a| a.to_string_lossy().to_string())
         .collect::<Vec<String>>()
@@ -285,7 +284,7 @@ fn make_service(
     if let Some(x) = restart_sec {
         let _ = writeln!(service, "RestartSec={x}");
     }
-    if let Some(username) = username {
+    if let Some(username) = &ctx.username {
         let _ = writeln!(service, "User={username}");
     }
 

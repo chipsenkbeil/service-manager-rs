@@ -44,6 +44,8 @@ jobs:
   tests:
     name: "Test Rust ${{ matrix.rust }} for ${{ matrix.test }} w/ ${{ matrix.manager }} (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
+    env:
+      WINSW_URL: https://github.com/winsw/winsw/releases/download/v3.0.0-alpha.11/WinSW-x64.exe
     strategy:
       fail-fast: false
       matrix:
@@ -53,6 +55,7 @@ jobs:
           - { rust: stable, os: macos-latest, manager: launchd, test: launchd_for_user }
           - { rust: stable, os: macos-latest, manager: launchd, test: launchd_for_system, elevated: sudo }
           - { rust: stable, os: windows-latest, manager: sc, test: sc_for_system }
+          - { rust: stable, os: windows-latest, manager: winsw, test: winsw_for_system }
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust ${{ matrix.rust }}
@@ -60,6 +63,15 @@ jobs:
         with:
           profile: minimal
           toolchain: ${{ matrix.rust }}
+
+      - name: Download WinSW for Windows
+        if: matrix.os == 'windows-latest' && matrix.manager == 'winsw'
+        run: |
+          $winsw_dir = "$env:GITHUB_WORKSPACE\winsw"
+          New-Item -ItemType directory -Path $winsw_dir -Force
+          Invoke-WebRequest -Uri ${{ env.WINSW_URL }} -OutFile "$winsw_dir\WinSW.exe"
+          echo "$winsw_dir" | Out-File -Append -Encoding utf8 -FilePath $env:GITHUB_PATH
+
       - uses: Swatinem/rust-cache@v1
       - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
         run: |
