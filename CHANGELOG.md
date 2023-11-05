@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Removed
 
+## [0.5.0] - 2023-11-03
+
+- Support for the WinSW service manager was added. WinSW can run any
+  application as a Windows service by providing the boilerplate code for
+  interacting with the Windows service infrastructure. Most, but not all,
+  configuration options are supported in this initial setup.
+- The `ServiceInstallCtx` is extended with optional `working_directory` and
+  `environment` fields, which assign a working directory and pass a list of
+  environment variables to the process launched by the service. Most service
+  managers support these. This is a backwards incompatible change.
+
 ## [0.4.0] - 2023-10-19
 
 ### Added
