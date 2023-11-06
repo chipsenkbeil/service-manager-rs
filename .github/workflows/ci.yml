@@ -90,12 +90,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
-        uses: cross-platform-actions/action@v0.19.1
+        uses: cross-platform-actions/action@v0.21.1
         with:
           operating_system: freebsd
           version: '13.2'
           environment_variables: IGNORE_OSVERSION
           shell: bash
+          sync_files: runner-to-vm
           run: |
             sudo pkg install -y curl && \
               curl https://sh.rustup.rs -sSf | \

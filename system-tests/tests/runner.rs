@@ -20,6 +20,7 @@ fn wait() {
     thread::sleep(WAIT_PERIOD);
 }
 
+#[allow(dead_code)]
 pub fn run_test_n(manager: impl Into<TypedServiceManager>, n: usize) {
     let manager = manager.into();
     for i in 0..n {
@@ -28,6 +29,7 @@ pub fn run_test_n(manager: impl Into<TypedServiceManager>, n: usize) {
     }
 }
 
+#[allow(dead_code)]
 pub fn run_test_n_as_user(
     manager: impl Into<TypedServiceManager>,
     n: usize,
