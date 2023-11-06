@@ -17,6 +17,7 @@ Rust library that provides an interface towards working with the
 following service management platforms:
 
 * [`sc.exe`](https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc754599(v=ws.11)) for use with [Window Service](https://en.wikipedia.org/wiki/Windows_service) (Windows)
+* [Winsw](https://github.com/winsw/winsw) (Windows)
 * [Launchd](https://en.wikipedia.org/wiki/Launchd) (MacOS)
 * [systemd](https://en.wikipedia.org/wiki/Systemd) (Linux)
 * [OpenRC](https://en.wikipedia.org/wiki/OpenRC) (Linux)
