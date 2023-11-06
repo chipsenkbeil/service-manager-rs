@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Removed
 
-## [0.5.0] - 2023-11-03
+## [0.5.0] - 2023-11-06
 
 - Support for the WinSW service manager was added. WinSW can run any
   application as a Windows service by providing the boilerplate code for
@@ -72,5 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Created `TypedServiceManager` enum to associate the manager's type when
   retrieved using native lookup
 
-[Unreleased]: https://github.com/chipsenkbeil/distant/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/chipsenkbeil/distant/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.5.0
+[0.4.0]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.4.0
+[0.3.0]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.3.0
+[0.1.3]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.1.3
+[0.1.2]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.1.2
+[0.1.1]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.1.1
 [0.1.0]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.1.0
