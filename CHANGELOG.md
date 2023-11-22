@@ -13,9 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.1] - 2023-11-22
 
-Fix a small issue in the WinSW service manager which caused the service
-management directories to be created at the current directory, rather than the
-intended location at C:\ProgramData\service-manager.
+- Fix a small issue in the WinSW service manager which caused the service
+  management directories to be created at the current directory, rather than
+  the intended location at C:\ProgramData\service-manager.
 
 ## [0.5.0] - 2023-11-06
 
