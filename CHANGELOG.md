@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Removed
 
+## [0.5.1] - 2023-11-22
+
+Fix a small issue in the WinSW service manager which caused the service
+management directories to be created at the current directory, rather than the
+intended location at C:\ProgramData\service-manager.
+
 ## [0.5.0] - 2023-11-06
 
 - Support for the WinSW service manager was added. WinSW can run any
