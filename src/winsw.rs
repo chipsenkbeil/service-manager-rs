@@ -17,11 +17,21 @@ static WINSW_EXE: &str = "winsw.exe";
 /// Service configuration
 ///
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WinSwConfig {
     pub install: WinSwInstallConfig,
     pub options: WinSwOptionsConfig,
     pub service_definition_dir_path: PathBuf,
+}
+
+impl Default for WinSwConfig {
+    fn default() -> Self {
+        WinSwConfig {
+            install: WinSwInstallConfig::default(),
+            options: WinSwOptionsConfig::default(),
+            service_definition_dir_path: PathBuf::from("C:\\ProgramData\\service-manager"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
