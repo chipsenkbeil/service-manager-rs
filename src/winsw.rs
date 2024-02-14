@@ -330,7 +330,7 @@ impl WinSwServiceManager {
         let cursor = Cursor::new(xml_string);
         let parser = EventReader::new(cursor);
         for e in parser {
-            if let Err(_) = e {
+            if e.is_err() {
                 return false;
             }
         }
@@ -355,7 +355,7 @@ impl ServiceManager for WinSwServiceManager {
             .join(service_name.clone());
         std::fs::create_dir_all(&service_instance_path)?;
 
-        let service_config_path = service_instance_path.join(&format!("{}.xml", service_name));
+        let service_config_path = service_instance_path.join(format!("{service_name}.xml"));
         Self::write_service_configuration(&service_config_path, &ctx, &self.config)?;
 
         winsw_exe("install", &service_name, service_instance_path)
@@ -403,7 +403,7 @@ impl ServiceManager for WinSwServiceManager {
     }
 }
 
-fn winsw_exe<'a>(cmd: &str, service_name: &str, working_dir_path: PathBuf) -> io::Result<()> {
+fn winsw_exe(cmd: &str, service_name: &str, working_dir_path: PathBuf) -> io::Result<()> {
     let mut command = Command::new(WINSW_EXE);
     command
         .stdin(Stdio::null())
@@ -516,10 +516,10 @@ mod tests {
         let parser = EventReader::new(cursor);
         let mut env_vars = Vec::new();
 
-        for e in parser {
-            if let Ok(XmlEvent::StartElement {
+        for e in parser.into_iter().flatten() {
+            if let XmlEvent::StartElement {
                 name, attributes, ..
-            }) = e
+            } = e
             {
                 if name.local_name == "env" {
                     let mut name_value_pair = (String::new(), String::new());
