@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Removed
 
+## [0.5.1] - 2024-02-14
+
+- Introduced support for specifying environment variables for systemd.
+The specified variables are now written on separate lines.
+- Apply fixes suggested by clippy.
+
 ## [0.5.1] - 2023-11-22
 
 - Fix a small issue in the WinSW service manager which caused the service
