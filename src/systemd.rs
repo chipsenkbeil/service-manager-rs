@@ -267,6 +267,12 @@ fn make_service(
         );
     }
 
+    if let Some(env_vars) = &ctx.environment {
+        for (var, val) in env_vars {
+            let _ = writeln!(service, "Environment=\"{var}={val}\"");
+        }
+    }
+
     let program = ctx.program.to_string_lossy();
     let args = ctx
         .args

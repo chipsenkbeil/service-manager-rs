@@ -107,14 +107,8 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
     // Wait for service to be installed
     wait();
 
-    let is_user_specified = if let Some(user) = username {
-        Some(is_service_using_the_specified_user(
-            &user,
-            service_label.clone(),
-        ))
-    } else {
-        None
-    };
+    let is_user_specified =
+        username.map(|user| is_service_using_the_specified_user(&user, service_label.clone()));
 
     // Start the service
     eprintln!("Starting service");
