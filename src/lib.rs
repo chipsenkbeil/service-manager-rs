@@ -198,6 +198,7 @@ impl FromStr for ServiceLabel {
 }
 
 /// Context provided to the install function of [`ServiceManager`]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceInstallCtx {
     /// Label associated with the service
     ///
@@ -244,6 +245,7 @@ impl ServiceInstallCtx {
 }
 
 /// Context provided to the uninstall function of [`ServiceManager`]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceUninstallCtx {
     /// Label associated with the service
     ///
@@ -252,6 +254,7 @@ pub struct ServiceUninstallCtx {
 }
 
 /// Context provided to the start function of [`ServiceManager`]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceStartCtx {
     /// Label associated with the service
     ///
@@ -260,6 +263,7 @@ pub struct ServiceStartCtx {
 }
 
 /// Context provided to the stop function of [`ServiceManager`]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceStopCtx {
     /// Label associated with the service
     ///

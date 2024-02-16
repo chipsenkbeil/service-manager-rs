@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 ### Removed
 
+## [0.5.2] - 2024-02-16
+
+- Derive basic traits on the Service context structs.
+
 ## [0.5.1] - 2024-02-14
 
 - Introduced support for specifying environment variables for systemd.
