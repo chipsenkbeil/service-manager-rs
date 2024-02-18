@@ -6,20 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Added
-### Changed
-### Fixed
-### Removed
 
-## [0.5.2] - 2024-02-16
-
-- Derive basic traits on the Service context structs.
-
-## [0.5.1] - 2024-02-14
-
-- Introduced support for specifying environment variables for systemd.
-The specified variables are now written on separate lines.
-- Apply fixes suggested by clippy.
+- Derive basic traits on the Service context structs. (#18)
+- Introduced support for specifying environment variables for systemd. The specified variables are now written on separate lines. (#17)
 
 ## [0.5.1] - 2023-11-22
 
