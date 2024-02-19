@@ -1,9 +1,8 @@
 use super::{
-    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
-    ServiceUninstallCtx,
+    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx,
+    ServiceStopCtx, ServiceUninstallCtx,
 };
-use plist::Dictionary;
-use plist::Value;
+use plist::{Dictionary, Value};
 use std::{
     ffi::OsStr,
     io,
@@ -134,11 +133,29 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
+        let dir_path = if self.user {
+            user_agent_dir_path()?
+        } else {
+            global_daemon_dir_path()
+        };
+        let qualified_name = ctx.label.to_qualified_name();
+        let plist_path = dir_path.join(format!("{}.plist", qualified_name));
+
+        launchctl("load", plist_path.to_string_lossy().as_ref())?;
         launchctl("start", &ctx.label.to_qualified_name())
     }
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
-        launchctl("stop", &ctx.label.to_qualified_name())
+        let dir_path = if self.user {
+            user_agent_dir_path()?
+        } else {
+            global_daemon_dir_path()
+        };
+        let qualified_name = ctx.label.to_qualified_name();
+        let plist_path = dir_path.join(format!("{}.plist", qualified_name));
+
+        launchctl("stop", &ctx.label.to_qualified_name());
+        launchctl("unload", plist_path.to_string_lossy().as_ref())
     }
 
     fn level(&self) -> ServiceLevel {
@@ -192,7 +209,12 @@ fn global_daemon_dir_path() -> PathBuf {
 
 fn user_agent_dir_path() -> io::Result<PathBuf> {
     Ok(dirs::home_dir()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Unable to locate home directory"))?
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Unable to locate home directory",
+            )
+        })?
         .join("Library")
         .join("LaunchAgents"))
 }
