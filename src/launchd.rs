@@ -76,6 +76,16 @@ impl LaunchdServiceManager {
             user: self.user,
         }
     }
+
+    fn get_plist_path(&self, qualified_name: String) -> PathBuf {
+        let dir_path = if self.user {
+            user_agent_dir_path().unwrap()
+        } else {
+            global_daemon_dir_path()
+        };
+        let plist_path = dir_path.join(format!("{}.plist", qualified_name));
+        plist_path
+    }
 }
 
 impl ServiceManager for LaunchdServiceManager {
@@ -120,41 +130,23 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
-        let dir_path = if self.user {
-            user_agent_dir_path()?
-        } else {
-            global_daemon_dir_path()
-        };
-        let qualified_name = ctx.label.to_qualified_name();
-        let plist_path = dir_path.join(format!("{}.plist", qualified_name));
+        let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
 
         launchctl("unload", plist_path.to_string_lossy().as_ref())?;
         std::fs::remove_file(plist_path)
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
-        let dir_path = if self.user {
-            user_agent_dir_path()?
-        } else {
-            global_daemon_dir_path()
-        };
-        let qualified_name = ctx.label.to_qualified_name();
-        let plist_path = dir_path.join(format!("{}.plist", qualified_name));
+        let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
 
         launchctl("load", plist_path.to_string_lossy().as_ref())?;
         launchctl("start", &ctx.label.to_qualified_name())
     }
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
-        let dir_path = if self.user {
-            user_agent_dir_path()?
-        } else {
-            global_daemon_dir_path()
-        };
-        let qualified_name = ctx.label.to_qualified_name();
-        let plist_path = dir_path.join(format!("{}.plist", qualified_name));
+        let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
 
-        launchctl("stop", &ctx.label.to_qualified_name());
+        let _ =launchctl("stop", &ctx.label.to_qualified_name());
         launchctl("unload", plist_path.to_string_lossy().as_ref())
     }
 
@@ -222,7 +214,7 @@ fn user_agent_dir_path() -> io::Result<PathBuf> {
 fn make_plist<'a>(
     config: &LaunchdInstallConfig,
     label: &str,
-    args: impl Iterator<Item = &'a OsStr>,
+    args: impl Iterator<Item=&'a OsStr>,
     username: Option<String>,
     working_directory: Option<PathBuf>,
     environment: Option<Vec<(String, String)>>,
