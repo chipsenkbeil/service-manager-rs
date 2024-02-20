@@ -1,6 +1,6 @@
 use super::{
-    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx,
-    ServiceStopCtx, ServiceUninstallCtx,
+    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
+    ServiceUninstallCtx,
 };
 use plist::{Dictionary, Value};
 use std::{
@@ -146,7 +146,7 @@ impl ServiceManager for LaunchdServiceManager {
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
         let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
 
-        let _ =launchctl("stop", &ctx.label.to_qualified_name());
+        let _ = launchctl("stop", &ctx.label.to_qualified_name());
         launchctl("unload", plist_path.to_string_lossy().as_ref())
     }
 
@@ -201,12 +201,7 @@ fn global_daemon_dir_path() -> PathBuf {
 
 fn user_agent_dir_path() -> io::Result<PathBuf> {
     Ok(dirs::home_dir()
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "Unable to locate home directory",
-            )
-        })?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Unable to locate home directory"))?
         .join("Library")
         .join("LaunchAgents"))
 }
@@ -214,7 +209,7 @@ fn user_agent_dir_path() -> io::Result<PathBuf> {
 fn make_plist<'a>(
     config: &LaunchdInstallConfig,
     label: &str,
-    args: impl Iterator<Item=&'a OsStr>,
+    args: impl Iterator<Item = &'a OsStr>,
     username: Option<String>,
     working_directory: Option<PathBuf>,
     environment: Option<Vec<(String, String)>>,

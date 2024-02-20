@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fix issue where calling stop on MacOS service does not halt the service due to the service's default auto-restart setting. (#19)
+
 ## [0.6.0] - 2024-02-18
 
 - Derive basic traits on the Service context structs. (#18)
