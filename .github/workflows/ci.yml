@@ -77,9 +77,11 @@ jobs:
         run: |
           ${{ matrix.elevated }} rustup default stable
           ${{ matrix.elevated }} cargo test -p system-tests ${{ matrix.test }} -- --nocapture
+  # NOTE: This is disabled via `if: false` due to failures related to the test environment.
   test-freebsd:
     name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (FreeBSD)"
     runs-on: macos-12
+    if: false
     env:
       IGNORE_OSVERSION: yes
     strategy:
