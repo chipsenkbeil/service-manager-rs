@@ -138,15 +138,11 @@ impl ServiceManager for LaunchdServiceManager {
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
         let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
-
-        launchctl("load", plist_path.to_string_lossy().as_ref())?;
-        launchctl("start", &ctx.label.to_qualified_name())
+        launchctl("load", plist_path.to_string_lossy().as_ref())
     }
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
         let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
-
-        let _ = launchctl("stop", &ctx.label.to_qualified_name());
         launchctl("unload", plist_path.to_string_lossy().as_ref())
     }
 
