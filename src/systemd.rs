@@ -290,8 +290,15 @@ fn make_service(
     if let Some(x) = restart_sec {
         let _ = writeln!(service, "RestartSec={x}");
     }
-    if let Some(username) = &ctx.username {
-        let _ = writeln!(service, "User={username}");
+
+    // For Systemd, a user-mode service definition should *not* specify the username, since it runs
+    // as the current user. The service will not start correctly if the definition specifies the
+    // username, even if it's the same as the current user. The option for specifying a user really
+    // only applies for a system-level service that doesn't run as root.
+    if !user {
+        if let Some(username) = &ctx.username {
+            let _ = writeln!(service, "User={username}");
+        }
     }
 
     let _ = writeln!(service, "[Install]");
