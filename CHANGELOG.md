@@ -7,10 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2024-05-03
+
 - Fix issue where calling stop on MacOS service does not halt the service due to the service's default auto-restart setting. (#19)
-
-## [0.6.1] - 2024-05-01
-
 - Remove user specification for user-mode service definitions in Systemd. In a user-mode service, it will run as the current user, and the service won't actually start correctly if the user is specified. The user specification is really for system-wide services that don't run as root.
 
 ## [0.6.0] - 2024-02-18
@@ -85,7 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Created `TypedServiceManager` enum to associate the manager's type when
   retrieved using native lookup
 
-[Unreleased]: https://github.com/chipsenkbeil/distant/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/chipsenkbeil/distant/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.6.1
 [0.6.0]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.6.0
 [0.5.1]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.5.1
 [0.5.0]: https://github.com/chipsenkbeil/service-manager-rs/releases/tag/v0.5.0
