@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2024-05-22
+
+- The WinSW service manager will delete service directories upon uninstall
+
 ## [0.6.1] - 2024-05-03
 
 - Fix issue where calling stop on MacOS service does not halt the service due to the service's default auto-restart setting. (#19)
