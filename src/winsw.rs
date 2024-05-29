@@ -342,7 +342,13 @@ impl ServiceManager for WinSwServiceManager {
     fn available(&self) -> io::Result<bool> {
         match which::which(WINSW_EXE) {
             Ok(_) => Ok(true),
-            Err(which::Error::CannotFindBinaryPath) => Ok(false),
+            Err(which::Error::CannotFindBinaryPath) => match std::env::var("WINSW_PATH") {
+                Ok(val) => {
+                    let path = PathBuf::from(val);
+                    Ok(path.exists())
+                }
+                Err(_) => Ok(false),
+            },
             Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
         }
     }
@@ -411,7 +417,19 @@ impl ServiceManager for WinSwServiceManager {
 }
 
 fn winsw_exe(cmd: &str, service_name: &str, working_dir_path: &Path) -> io::Result<()> {
-    let mut command = Command::new(WINSW_EXE);
+    let winsw_path = match std::env::var("WINSW_PATH") {
+        Ok(val) => {
+            let path = PathBuf::from(val);
+            if path.exists() {
+                path
+            } else {
+                PathBuf::from(WINSW_EXE)
+            }
+        }
+        Err(_) => PathBuf::from(WINSW_EXE),
+    };
+
+    let mut command = Command::new(winsw_path);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

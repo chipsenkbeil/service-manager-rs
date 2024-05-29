@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2024-05-29
+
+- The WinSW service manager can read the location of the WinSW binary from the `WINSW_PATH`
+environment variable
+
 ## [0.6.2] - 2024-05-27
 
 - The WinSW service manager will delete service directories upon uninstall
