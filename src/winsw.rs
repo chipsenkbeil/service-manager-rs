@@ -231,9 +231,15 @@ impl WinSwServiceManager {
                 .join(" ");
             Self::write_element(&mut writer, "stoparguments", &stop_args)?;
         }
+
         if let Some(start_mode) = &config.options.start_mode {
             Self::write_element(&mut writer, "startmode", &format!("{:?}", start_mode))?;
+        } else if ctx.autostart {
+            Self::write_element(&mut writer, "startmode", "Automatic")?;
+        } else {
+            Self::write_element(&mut writer, "startmode", "Manual")?;
         }
+
         if let Some(delayed_autostart) = config.options.delayed_autostart {
             Self::write_element(
                 &mut writer,
@@ -581,6 +587,7 @@ mod tests {
             username: None,
             working_directory: None,
             environment: None,
+            autostart: true,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -607,6 +614,103 @@ mod tests {
             "--arg value --another-arg",
             get_element_value(&xml, "arguments")
         );
+        assert_eq!("Automatic", get_element_value(&xml, "startmode"));
+    }
+
+    #[test]
+    fn test_service_configuration_with_autostart_false() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let service_config_file = temp_dir.child("service_config.xml");
+
+        let ctx = ServiceInstallCtx {
+            label: "org.example.my_service".parse().unwrap(),
+            program: PathBuf::from("C:\\Program Files\\org.example\\my_service.exe"),
+            args: vec![
+                OsString::from("--arg"),
+                OsString::from("value"),
+                OsString::from("--another-arg"),
+            ],
+            contents: None,
+            username: None,
+            working_directory: None,
+            environment: None,
+            autostart: false,
+        };
+
+        WinSwServiceManager::write_service_configuration(
+            &service_config_file.to_path_buf(),
+            &ctx,
+            &WinSwConfig::default(),
+        )
+        .unwrap();
+
+        let xml = std::fs::read_to_string(service_config_file.path()).unwrap();
+
+        service_config_file.assert(predicates::path::is_file());
+        assert_eq!("org.example.my_service", get_element_value(&xml, "id"));
+        assert_eq!("org.example.my_service", get_element_value(&xml, "name"));
+        assert_eq!(
+            "C:\\Program Files\\org.example\\my_service.exe",
+            get_element_value(&xml, "executable")
+        );
+        assert_eq!(
+            "Service for org.example.my_service",
+            get_element_value(&xml, "description")
+        );
+        assert_eq!(
+            "--arg value --another-arg",
+            get_element_value(&xml, "arguments")
+        );
+        assert_eq!("Manual", get_element_value(&xml, "startmode"));
+    }
+
+    #[test]
+    fn test_service_configuration_with_special_start_type_should_override_autostart() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let service_config_file = temp_dir.child("service_config.xml");
+
+        let ctx = ServiceInstallCtx {
+            label: "org.example.my_service".parse().unwrap(),
+            program: PathBuf::from("C:\\Program Files\\org.example\\my_service.exe"),
+            args: vec![
+                OsString::from("--arg"),
+                OsString::from("value"),
+                OsString::from("--another-arg"),
+            ],
+            contents: None,
+            username: None,
+            working_directory: None,
+            environment: None,
+            autostart: false,
+        };
+
+        let mut config = WinSwConfig::default();
+        config.options.start_mode = Some(WinSwStartType::Boot);
+        WinSwServiceManager::write_service_configuration(
+            &service_config_file.to_path_buf(),
+            &ctx,
+            &config,
+        )
+        .unwrap();
+
+        let xml = std::fs::read_to_string(service_config_file.path()).unwrap();
+
+        service_config_file.assert(predicates::path::is_file());
+        assert_eq!("org.example.my_service", get_element_value(&xml, "id"));
+        assert_eq!("org.example.my_service", get_element_value(&xml, "name"));
+        assert_eq!(
+            "C:\\Program Files\\org.example\\my_service.exe",
+            get_element_value(&xml, "executable")
+        );
+        assert_eq!(
+            "Service for org.example.my_service",
+            get_element_value(&xml, "description")
+        );
+        assert_eq!(
+            "--arg value --another-arg",
+            get_element_value(&xml, "arguments")
+        );
+        assert_eq!("Boot", get_element_value(&xml, "startmode"));
     }
 
     #[test]
@@ -629,6 +733,7 @@ mod tests {
                 ("ENV1".to_string(), "val1".to_string()),
                 ("ENV2".to_string(), "val2".to_string()),
             ]),
+            autostart: true,
         };
 
         let config = WinSwConfig {
@@ -742,6 +847,7 @@ mod tests {
                 <description>This service runs Jenkins continuous integration system.</description>
                 <executable>java</executable>
                 <arguments>-Xrs -Xmx256m -jar "%BASE%\jenkins.war" --httpPort=8080</arguments>
+                <startmode>Automatic</startmode>
             </service>
         "#};
         let ctx = ServiceInstallCtx {
@@ -756,6 +862,7 @@ mod tests {
             username: None,
             working_directory: None,
             environment: None,
+            autostart: true,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -798,6 +905,7 @@ mod tests {
             username: None,
             working_directory: None,
             environment: None,
+            autostart: true,
         };
 
         let result = WinSwServiceManager::write_service_configuration(

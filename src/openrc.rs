@@ -70,10 +70,14 @@ impl ServiceManager for OpenRcServiceManager {
             SCRIPT_FILE_PERMISSIONS,
         )?;
 
-        // Add with default run level explicitly defined to prevent weird systems
-        // like alpine's docker container with openrc from setting a different
-        // run level than default
-        rc_update("add", &script_name, [OsStr::new("default")])
+        if ctx.autostart {
+            // Add with default run level explicitly defined to prevent weird systems
+            // like alpine's docker container with openrc from setting a different
+            // run level than default
+            rc_update("add", &script_name, [OsStr::new("default")])?;
+        }
+
+        Ok(())
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {

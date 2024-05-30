@@ -59,7 +59,11 @@ impl ServiceManager for RcdServiceManager {
             SCRIPT_FILE_PERMISSIONS,
         )?;
 
-        rc_d_script("enable", &service)
+        if ctx.autostart {
+            rc_d_script("enable", &service)?;
+        }
+
+        Ok(())
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {

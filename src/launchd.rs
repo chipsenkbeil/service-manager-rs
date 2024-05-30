@@ -117,6 +117,7 @@ impl ServiceManager for LaunchdServiceManager {
                 ctx.username.clone(),
                 ctx.working_directory.clone(),
                 ctx.environment.clone(),
+                ctx.autostart,
             ),
         };
 
@@ -126,7 +127,11 @@ impl ServiceManager for LaunchdServiceManager {
             PLIST_FILE_PERMISSIONS,
         )?;
 
-        launchctl("load", plist_path.to_string_lossy().as_ref())
+        if ctx.autostart {
+            launchctl("load", plist_path.to_string_lossy().as_ref())?;
+        }
+
+        Ok(())
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
@@ -209,6 +214,7 @@ fn make_plist<'a>(
     username: Option<String>,
     working_directory: Option<PathBuf>,
     environment: Option<Vec<(String, String)>>,
+    autostart: bool,
 ) -> String {
     let mut dict = Dictionary::new();
 
@@ -244,6 +250,12 @@ fn make_plist<'a>(
             "EnvironmentVariables".to_string(),
             Value::Dictionary(env_dict),
         );
+    }
+
+    if autostart {
+        dict.insert("RunAtLoad".to_string(), Value::Boolean(true));
+    } else {
+        dict.insert("RunAtLoad".to_string(), Value::Boolean(false));
     }
 
     let plist = Value::Dictionary(dict);

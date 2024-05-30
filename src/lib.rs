@@ -230,6 +230,9 @@ pub struct ServiceInstallCtx {
     /// Optionally specify a list of environment variables to be passed to the process launched by
     /// the service
     pub environment: Option<Vec<(String, String)>>,
+
+    /// Specify whether the service should automatically start on reboot
+    pub autostart: bool,
 }
 
 impl ServiceInstallCtx {

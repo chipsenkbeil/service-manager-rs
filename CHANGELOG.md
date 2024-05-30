@@ -7,10 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.6.3] - 2024-05-29
+## [0.7.0] - 2024-05-30
+
+### Added
 
 - The WinSW service manager can read the location of the WinSW binary from the `WINSW_PATH`
-environment variable
+  environment variable. This is useful to avoid the necessity of having it in a location that is on
+  the `Path` variable, which can be a bit more awkward on Windows. There are a lack of standard
+  locations that can be written to without administrative privileges.
+- Introduce the `autostart` field on `ServiceInstallCtx`. This controls whether a service should
+  automatically start upon rebooting the OS. It's an option common to all service managers and it's
+  useful for developers to think about whether their services should automatically start up. If the
+  service is resource intensive or uses a lot of bandwidth, some users actually don't want automatic
+  start because it can potentially render their machine unusable.
 
 ## [0.6.2] - 2024-05-27
 

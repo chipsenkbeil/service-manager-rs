@@ -136,7 +136,13 @@ impl ServiceManager for SystemdServiceManager {
         let script_path = dir_path.join(format!("{script_name}.service"));
         let service = match ctx.contents {
             Some(contents) => contents,
-            _ => make_service(&self.config.install, &script_name, &ctx, self.user),
+            _ => make_service(
+                &self.config.install,
+                &script_name,
+                &ctx,
+                self.user,
+                ctx.autostart,
+            ),
         };
 
         utils::write_file(
@@ -145,7 +151,11 @@ impl ServiceManager for SystemdServiceManager {
             SERVICE_FILE_PERMISSIONS,
         )?;
 
-        systemctl("enable", script_path.to_string_lossy().as_ref(), self.user)
+        if ctx.autostart {
+            systemctl("enable", script_path.to_string_lossy().as_ref(), self.user)?;
+        }
+
+        Ok(())
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
@@ -237,6 +247,7 @@ fn make_service(
     description: &str,
     ctx: &ServiceInstallCtx,
     user: bool,
+    autostart: bool,
 ) -> String {
     use std::fmt::Write as _;
     let SystemdInstallConfig {
@@ -301,11 +312,11 @@ fn make_service(
         }
     }
 
-    let _ = writeln!(service, "[Install]");
-
-    if user {
+    if user && autostart {
+        let _ = writeln!(service, "[Install]");
         let _ = writeln!(service, "WantedBy=default.target");
-    } else {
+    } else if autostart {
+        let _ = writeln!(service, "[Install]");
         let _ = writeln!(service, "WantedBy=multi-user.target");
     }
 
