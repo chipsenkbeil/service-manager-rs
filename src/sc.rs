@@ -187,8 +187,15 @@ impl ServiceManager for ScServiceManager {
         let service_name = ctx.label.to_qualified_name();
 
         let service_type = OsString::from(self.config.install.service_type.to_string());
-        let start_type = OsString::from(self.config.install.start_type.to_string());
         let error_severity = OsString::from(self.config.install.error_severity.to_string());
+        let start_type = if ctx.autostart {
+            OsString::from("Auto")
+        } else {
+            // TODO: Perhaps it could be useful to make `start_type` an `Option`? That way you
+            // could have `Auto`/`Demand` based on `autostart`, and if `start_type` is set, its
+            // special value will override `autostart`.
+            OsString::from(self.config.install.start_type.to_string())
+        };
 
         // Build our binary including arguments, following similar approach as windows-service-rs
         let mut binpath = OsString::new();

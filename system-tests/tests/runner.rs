@@ -101,6 +101,7 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
             username: username.clone(),
             working_directory: None,
             environment: None,
+            autostart: true,
         })
         .unwrap();
 

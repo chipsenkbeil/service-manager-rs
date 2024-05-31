@@ -68,6 +68,7 @@ manager.install(ServiceInstallCtx {
     username: None, // Optional String for alternative user to run service.
     working_directory: None, // Optional String for the working directory for the service process.
     environment: None, // Optional list of environment variables to supply the service process.
+    autostart: true, // Specify whether the service should automatically start upon OS reboot.
 }).expect("Failed to install");
 
 // Start our service using the underlying service management platform
@@ -142,6 +143,7 @@ manager.install(ServiceInstallCtx {
     username: None, // Optional String for alternative user to run service.
     working_directory: None, // Optional String for the working directory for the service process.
     environment: None, // Optional list of environment variables to supply the service process.
+    autostart: true, // Specify whether the service should automatically start upon OS reboot.
 }).expect("Failed to install");
 ```
 
