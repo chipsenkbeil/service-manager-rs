@@ -85,8 +85,8 @@ impl LaunchdServiceManager {
         } else {
             global_daemon_dir_path()
         };
-        let plist_path = dir_path.join(format!("{}.plist", qualified_name));
-        plist_path
+        
+        dir_path.join(format!("{}.plist", qualified_name))
     }
 }
 
@@ -198,8 +198,7 @@ impl ServiceManager for LaunchdServiceManager {
             .collect::<Vec<&str>>();
         if lines
             .into_iter()
-            .find(|s| s.contains("not running"))
-            .is_some()
+            .any(|s| s.contains("not running"))
         {
             Ok(crate::ServiceStatus::Stopped(None))
         } else {

@@ -286,9 +286,7 @@ impl ServiceManager for ScServiceManager {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let line = stdout
-            .split('\n')
-            .filter(|line| line.trim().starts_with("state"))
-            .next();
+            .split('\n').find(|line| line.trim().starts_with("state"));
         let status = match line {
             Some(line) if line.contains("RUNNING") => crate::ServiceStatus::Running,
             _ => crate::ServiceStatus::Stopped(None), // TODO: more statuses?
