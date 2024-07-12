@@ -7,7 +7,7 @@ use super::{
 };
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::{self, BufWriter, Cursor, ErrorKind, Write};
+use std::io::{self, BufWriter, Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use xml::common::XmlVersion;

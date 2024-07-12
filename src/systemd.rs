@@ -1,3 +1,5 @@
+use crate::utils::wrap_output;
+
 use super::{
     utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
@@ -5,7 +7,7 @@ use super::{
 use std::{
     fmt, io,
     path::PathBuf,
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
 };
 
 static SYSTEMCTL: &str = "systemctl";
@@ -152,7 +154,11 @@ impl ServiceManager for SystemdServiceManager {
         )?;
 
         if ctx.autostart {
-            systemctl("enable", script_path.to_string_lossy().as_ref(), self.user)?;
+            wrap_output(systemctl(
+                "enable",
+                script_path.to_string_lossy().as_ref(),
+                self.user,
+            )?)?;
         }
 
         Ok(())
@@ -167,16 +173,22 @@ impl ServiceManager for SystemdServiceManager {
         let script_name = ctx.label.to_script_name();
         let script_path = dir_path.join(format!("{script_name}.service"));
 
-        systemctl("disable", script_path.to_string_lossy().as_ref(), self.user)?;
+        wrap_output(systemctl(
+            "disable",
+            script_path.to_string_lossy().as_ref(),
+            self.user,
+        )?)?;
         std::fs::remove_file(script_path)
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
-        systemctl("start", &ctx.label.to_script_name(), self.user)
+        wrap_output(systemctl("start", &ctx.label.to_script_name(), self.user)?)?;
+        Ok(())
     }
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
-        systemctl("stop", &ctx.label.to_script_name(), self.user)
+        wrap_output(systemctl("stop", &ctx.label.to_script_name(), self.user)?)?;
+        Ok(())
     }
 
     fn level(&self) -> ServiceLevel {
@@ -195,39 +207,39 @@ impl ServiceManager for SystemdServiceManager {
 
         Ok(())
     }
+
+    fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
+        let output = systemctl("status", &ctx.label.to_script_name(), self.user)?;
+        // ref: https://www.freedesktop.org/software/systemd/man/latest/systemctl.html#Exit%20status
+        match output.status.code() {
+            Some(4) => Ok(crate::ServiceStatus::NotInstalled),
+            Some(3) => Ok(crate::ServiceStatus::Stopped(None)),
+            Some(0) => Ok(crate::ServiceStatus::Running),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "Command failed with exit code {}: {}",
+                    output.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            )),
+        }
+    }
 }
 
-fn systemctl(cmd: &str, label: &str, user: bool) -> io::Result<()> {
-    let output = {
-        let mut command = Command::new(SYSTEMCTL);
+fn systemctl(cmd: &str, label: &str, user: bool) -> io::Result<Output> {
+    let mut command = Command::new(SYSTEMCTL);
 
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-        if user {
-            command.arg("--user");
-        }
-
-        command.arg(cmd).arg(label).output()?
-    };
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let msg = String::from_utf8(output.stderr)
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .filter(|s| !s.trim().is_empty())
-            })
-            .unwrap_or_else(|| format!("Failed to {cmd} for {label}"));
-
-        Err(io::Error::new(io::ErrorKind::Other, msg))
+    if user {
+        command.arg("--user");
     }
+
+    command.arg(cmd).arg(label).output()
 }
 
 #[inline]
