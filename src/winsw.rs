@@ -450,11 +450,11 @@ impl ServiceManager for WinSwServiceManager {
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.contains("NonExistent") {
-            return Ok(ServiceStatus::NotInstalled);
+            Ok(ServiceStatus::NotInstalled)
         } else if stdout.contains("running") {
-            return Ok(ServiceStatus::Running);
+            Ok(ServiceStatus::Running)
         } else {
-            return Ok(ServiceStatus::Stopped(None));
+            Ok(ServiceStatus::Stopped(None))
         }
     }
 }

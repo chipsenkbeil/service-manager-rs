@@ -58,7 +58,7 @@ impl ServiceManager for TypedServiceManager {
         using!(self, x -> x.set_level(level))
     }
 
-    fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<()> {
+    fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
         using!(self, x -> x.status(ctx))
     }
 }
