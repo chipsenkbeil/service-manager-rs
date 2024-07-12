@@ -53,6 +53,9 @@ pub trait ServiceManager {
 
     /// Sets the target level for the manager
     fn set_level(&mut self, level: ServiceLevel) -> io::Result<()>;
+
+    /// Return the service status info
+    fn status(&self, ctx: ServiceStatusCtx) -> io::Result<ServiceStatus>;
 }
 
 impl dyn ServiceManager {
@@ -106,6 +109,14 @@ where
 pub enum ServiceLevel {
     System,
     User,
+}
+
+/// Represents the status of a service
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ServiceStatus {
+    NotInstalled,
+    Running,
+    Stopped(Option<String>), // Provide a reason if possible
 }
 
 /// Label describing the service (e.g. `org.example.my_application`
@@ -268,6 +279,15 @@ pub struct ServiceStartCtx {
 /// Context provided to the stop function of [`ServiceManager`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceStopCtx {
+    /// Label associated with the service
+    ///
+    /// E.g. `rocks.distant.manager`
+    pub label: ServiceLabel,
+}
+
+/// Context provided to the status function of [`ServiceManager`]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceStatusCtx {
     /// Label associated with the service
     ///
     /// E.g. `rocks.distant.manager`
