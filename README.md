@@ -31,7 +31,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-service-manager = "0.6"
+service-manager = "0.7"
 ```
 
 ## Examples
