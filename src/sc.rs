@@ -268,9 +268,8 @@ impl ServiceManager for ScServiceManager {
     fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
         let service_name = ctx.label.to_qualified_name();
         let output = sc_exe("query", &service_name, [])?;
-
         if !output.status.success() {
-            if output.status.code() == Some(1060) {
+            if matches!(output.status.code(), Some(1060)) {
                 // 1060 = The specified service does not exist as an installed service.
                 return Ok(crate::ServiceStatus::NotInstalled);
             }
@@ -285,8 +284,11 @@ impl ServiceManager for ScServiceManager {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let line = stdout
-            .split('\n').find(|line| line.trim().starts_with("state"));
+        let line = stdout.split('\n').find(|line| {
+            line.trim_matches(&['\r', ' '])
+                .to_lowercase()
+                .starts_with("state")
+        });
         let status = match line {
             Some(line) if line.contains("RUNNING") => crate::ServiceStatus::Running,
             _ => crate::ServiceStatus::Stopped(None), // TODO: more statuses?
