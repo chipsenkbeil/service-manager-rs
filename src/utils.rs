@@ -7,7 +7,7 @@ use std::{
 /// Writes/overwrites a file, assigning the permissions of `mode` if on a unix system
 pub fn write_file(path: &Path, data: &[u8], _mode: u32) -> io::Result<()> {
     let mut opts = OpenOptions::new();
-    opts.create(true).write(true);
+    opts.create(true).write(true).truncate(true);
 
     #[cfg(unix)]
     {
