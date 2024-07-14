@@ -437,9 +437,13 @@ impl ServiceManager for WinSwServiceManager {
             .config
             .service_definition_dir_path
             .join(service_name.clone());
+        if !service_instance_path.exists() {
+            return Ok(ServiceStatus::NotInstalled);
+        }
         let output = winsw_exe("status", &service_name, &service_instance_path)?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            // It seems the error message is thrown by WinSW v2.x because only WinSW.[xml|yml] is supported
             if stderr.contains("System.IO.FileNotFoundException: Unable to locate WinSW.[xml|yml] file within executable directory") {
                 return Ok(ServiceStatus::NotInstalled);
             }
