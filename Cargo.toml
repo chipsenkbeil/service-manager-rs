@@ -14,7 +14,8 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["encoding"]
 encoding = [
-    "dep:charset-normalizer-rs",
+    "dep:encoding_rs",
+    "dep:encoding-utils",
 ] # probe OsStr encoding while parsing
 
 [workspace]
@@ -28,8 +29,8 @@ plist = "1.1"
 serde = { version = "1", features = ["derive"], optional = true }
 which = "4.0"
 xml-rs = "0.8.19"
-# encoding_rs = { version = "0.8", optional = true }
-charset-normalizer-rs = { version = "1", optional = true }
+encoding_rs = { version = "0.8", optional = true }
+encoding-utils = { version ="0.1", optional = true }
 
 [dev-dependencies]
 assert_fs = "1.0.13"
