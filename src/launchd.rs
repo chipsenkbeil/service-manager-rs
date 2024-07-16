@@ -1,13 +1,16 @@
+use crate::utils::wrap_output;
+
 use super::{
     utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
 use plist::{Dictionary, Value};
 use std::{
+    borrow::Cow,
     ffi::OsStr,
     io,
     path::PathBuf,
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
 };
 
 static LAUNCHCTL: &str = "launchctl";
@@ -83,8 +86,8 @@ impl LaunchdServiceManager {
         } else {
             global_daemon_dir_path()
         };
-        let plist_path = dir_path.join(format!("{}.plist", qualified_name));
-        plist_path
+
+        dir_path.join(format!("{}.plist", qualified_name))
     }
 }
 
@@ -128,7 +131,7 @@ impl ServiceManager for LaunchdServiceManager {
         )?;
 
         if ctx.autostart {
-            launchctl("load", plist_path.to_string_lossy().as_ref())?;
+            wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
         }
 
         Ok(())
@@ -137,18 +140,20 @@ impl ServiceManager for LaunchdServiceManager {
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
         let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
 
-        launchctl("unload", plist_path.to_string_lossy().as_ref())?;
+        wrap_output(launchctl("unload", plist_path.to_string_lossy().as_ref())?)?;
         std::fs::remove_file(plist_path)
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
         let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
-        launchctl("load", plist_path.to_string_lossy().as_ref())
+        wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
+        Ok(())
     }
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
         let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
-        launchctl("unload", plist_path.to_string_lossy().as_ref())
+        wrap_output(launchctl("unload", plist_path.to_string_lossy().as_ref())?)?;
+        Ok(())
     }
 
     fn level(&self) -> ServiceLevel {
@@ -167,32 +172,79 @@ impl ServiceManager for LaunchdServiceManager {
 
         Ok(())
     }
+
+    fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
+        let mut service_name = ctx.label.to_qualified_name();
+        // Due to we could not get the status of a service via a service label, so we have to run this command twice
+        // in first time, if there is a service exists, the output will advice us a full service label with a prefix.
+        // Or it will return nothing, it means the service is not installed(not exists).
+        let mut out: Cow<str> = Cow::Borrowed("");
+        for i in 0..2 {
+            let output = launchctl("print", &service_name)?;
+            if !output.status.success() {
+                if output.status.code() == Some(64) {
+                    // 64 is the exit code for a service not found
+                    out = Cow::Owned(String::from_utf8_lossy(&output.stderr).to_string());
+                    if out.trim().is_empty() {
+                        out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
+                    }
+                    if i == 0 {
+                        let label = out.lines().find(|line| line.contains(&service_name));
+                        match label {
+                            Some(label) => {
+                                service_name = label.trim().to_string();
+                                continue;
+                            }
+                            None => return Ok(crate::ServiceStatus::NotInstalled),
+                        }
+                    } else {
+                        // We have access to the full service label, so it impossible to get the failed status, or it must be input error.
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            format!(
+                                "Command failed with exit code {}: {}",
+                                output.status.code().unwrap_or(-1),
+                                out
+                            ),
+                        ));
+                    }
+                } else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!(
+                            "Command failed with exit code {}: {}",
+                            output.status.code().unwrap_or(-1),
+                            String::from_utf8_lossy(&output.stderr)
+                        ),
+                    ));
+                }
+            }
+            out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
+        }
+        let lines = out
+            .lines()
+            .map(|s| s.trim())
+            .filter(|s| s.contains("state"))
+            .collect::<Vec<&str>>();
+        if lines
+            .into_iter()
+            .any(|s| !s.contains("not running") && s.contains("running"))
+        {
+            Ok(crate::ServiceStatus::Running)
+        } else {
+            Ok(crate::ServiceStatus::Stopped(None))
+        }
+    }
 }
 
-fn launchctl(cmd: &str, label: &str) -> io::Result<()> {
-    let output = Command::new(LAUNCHCTL)
+fn launchctl(cmd: &str, label: &str) -> io::Result<Output> {
+    Command::new(LAUNCHCTL)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .arg(cmd)
         .arg(label)
-        .output()?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let msg = String::from_utf8(output.stderr)
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .filter(|s| !s.trim().is_empty())
-            })
-            .unwrap_or_else(|| format!("Failed to {cmd} for {label}"));
-
-        Err(io::Error::new(io::ErrorKind::Other, msg))
-    }
+        .output()
 }
 
 #[inline]

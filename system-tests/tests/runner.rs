@@ -90,6 +90,19 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
         args.push(OsString::from("--run-as-windows-service"));
     }
 
+    eprintln!("Checking status of service");
+    assert!(
+        matches!(
+            manager
+                .status(ServiceStatusCtx {
+                    label: service_label.clone(),
+                })
+                .unwrap(),
+            ServiceStatus::NotInstalled,
+        ),
+        "service should not be installed"
+    );
+
     // Install the service
     eprintln!("Installing service");
     manager
@@ -108,6 +121,19 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
     // Wait for service to be installed
     wait();
 
+    eprintln!("Checking status of service");
+    assert!(
+        matches!(
+            manager
+                .status(ServiceStatusCtx {
+                    label: service_label.clone(),
+                })
+                .unwrap(),
+            ServiceStatus::Stopped(_)
+        ),
+        "service should be stopped"
+    );
+
     let is_user_specified =
         username.map(|user| is_service_using_the_specified_user(&user, service_label.clone()));
 
@@ -121,6 +147,19 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
 
     // Wait for the service to start
     wait();
+
+    eprintln!("Checking status of service");
+    assert!(
+        matches!(
+            manager
+                .status(ServiceStatusCtx {
+                    label: service_label.clone(),
+                })
+                .unwrap(),
+            ServiceStatus::Running
+        ),
+        "service should be running"
+    );
 
     // Communicate with the service
     eprintln!("Talking to service");
@@ -156,14 +195,40 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
     // Wait for the service to stop
     wait();
 
+    eprintln!("Checking status of service");
+    assert!(
+        matches!(
+            manager
+                .status(ServiceStatusCtx {
+                    label: service_label.clone(),
+                })
+                .unwrap(),
+            ServiceStatus::Stopped(_)
+        ),
+        "service should be stopped"
+    );
+
     // Uninstall the service
     eprintln!("Uninstalling service");
     manager
         .uninstall(ServiceUninstallCtx {
-            label: service_label,
+            label: service_label.clone(),
         })
         .unwrap();
     wait();
+
+    eprintln!("Checking status of service");
+    assert!(
+        matches!(
+            manager
+                .status(ServiceStatusCtx {
+                    label: service_label,
+                })
+                .unwrap(),
+            ServiceStatus::NotInstalled
+        ),
+        "service should be not installed"
+    );
 
     is_user_specified
 }

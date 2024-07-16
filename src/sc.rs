@@ -1,3 +1,5 @@
+use crate::utils::wrap_output;
+
 use super::{
     ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
@@ -6,7 +8,7 @@ use std::{
     borrow::Cow,
     ffi::{OsStr, OsString},
     fmt, io,
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
 };
 
 #[cfg(windows)]
@@ -207,7 +209,7 @@ impl ServiceManager for ScServiceManager {
 
         let display_name = OsStr::new(&service_name);
 
-        sc_exe(
+        wrap_output(sc_exe(
             "create",
             &service_name,
             [
@@ -227,22 +229,26 @@ impl ServiceManager for ScServiceManager {
                 OsStr::new("displayname="),
                 display_name,
             ],
-        )
+        )?)?;
+        Ok(())
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
         let service_name = ctx.label.to_qualified_name();
-        sc_exe("delete", &service_name, [])
+        wrap_output(sc_exe("delete", &service_name, [])?)?;
+        Ok(())
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
         let service_name = ctx.label.to_qualified_name();
-        sc_exe("start", &service_name, [])
+        wrap_output(sc_exe("start", &service_name, [])?)?;
+        Ok(())
     }
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
         let service_name = ctx.label.to_qualified_name();
-        sc_exe("stop", &service_name, [])
+        wrap_output(sc_exe("stop", &service_name, [])?)?;
+        Ok(())
     }
 
     fn level(&self) -> ServiceLevel {
@@ -258,13 +264,44 @@ impl ServiceManager for ScServiceManager {
             )),
         }
     }
+
+    fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
+        let service_name = ctx.label.to_qualified_name();
+        let output = sc_exe("query", &service_name, [])?;
+        if !output.status.success() {
+            if matches!(output.status.code(), Some(1060)) {
+                // 1060 = The specified service does not exist as an installed service.
+                return Ok(crate::ServiceStatus::NotInstalled);
+            }
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "Command failed with exit code {}: {}",
+                    output.status.code().unwrap_or(-1),
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let line = stdout.split('\n').find(|line| {
+            line.trim_matches(&['\r', ' '])
+                .to_lowercase()
+                .starts_with("state")
+        });
+        let status = match line {
+            Some(line) if line.contains("RUNNING") => crate::ServiceStatus::Running,
+            _ => crate::ServiceStatus::Stopped(None), // TODO: more statuses?
+        };
+        Ok(status)
+    }
 }
 
 fn sc_exe<'a>(
     cmd: &str,
     service_name: &str,
     args: impl IntoIterator<Item = &'a OsStr>,
-) -> io::Result<()> {
+) -> io::Result<Output> {
     let mut command = Command::new(SC_EXE);
 
     command
@@ -278,21 +315,5 @@ fn sc_exe<'a>(
         command.arg(arg);
     }
 
-    let output = command.output()?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let msg = String::from_utf8(output.stderr)
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .filter(|s| !s.trim().is_empty())
-            })
-            .unwrap_or_else(|| format!("Failed to {cmd} for {service_name}"));
-
-        Err(io::Error::new(io::ErrorKind::Other, msg))
-    }
+    command.output()
 }
