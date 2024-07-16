@@ -174,7 +174,9 @@ impl ServiceManager for LaunchdServiceManager {
 
     fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
         let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
+        eprintln!("plist_path: {:?}", plist_path);
         let output = launchctl("print", plist_path.to_string_lossy().as_ref())?;
+        eprintln!("output: {:?}", output);
         if !output.status.success() {
             if output.status.code() == Some(64) {
                 // 64 is the exit code for a service not found
