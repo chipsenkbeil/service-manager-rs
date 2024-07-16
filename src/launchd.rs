@@ -226,10 +226,13 @@ impl ServiceManager for LaunchdServiceManager {
             .map(|s| s.trim())
             .filter(|s| s.contains("state"))
             .collect::<Vec<&str>>();
-        if lines.into_iter().any(|s| s.contains("not running")) {
-            Ok(crate::ServiceStatus::Stopped(None))
-        } else {
+        if lines
+            .into_iter()
+            .any(|s| !s.contains("not running") && s.contains("running"))
+        {
             Ok(crate::ServiceStatus::Running)
+        } else {
+            Ok(crate::ServiceStatus::Stopped(None))
         }
     }
 }
