@@ -6,6 +6,7 @@ use super::{
 };
 use plist::{Dictionary, Value};
 use std::{
+    borrow::Cow,
     ffi::OsStr,
     io,
     path::PathBuf,
@@ -183,12 +184,12 @@ impl ServiceManager for LaunchdServiceManager {
             if !output.status.success() {
                 if output.status.code() == Some(64) {
                     // 64 is the exit code for a service not found
-                    out = String::from_utf8_lossy(&output.stderr).trim();
-                    if out.is_empty() {
-                        out = String::from_utf8_lossy(&output.stdout).trim();
+                    out = Cow::Owned(String::from_utf8_lossy(&output.stderr).to_string());
+                    if out.trim().is_empty() {
+                        out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
                     }
                     if i == 0 {
-                        let label = out.lines().find(|line| line.contains(service_name));
+                        let label = out.lines().find(|line| line.contains(&service_name));
                         match label {
                             Some(label) => {
                                 service_name = label.trim().to_string();
@@ -218,7 +219,7 @@ impl ServiceManager for LaunchdServiceManager {
                     ));
                 }
             }
-            out = &String::from_utf8_lossy(&output.stdout);
+            out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
         }
         let lines = out
             .lines()
