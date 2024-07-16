@@ -85,7 +85,7 @@ impl LaunchdServiceManager {
         } else {
             global_daemon_dir_path()
         };
-        
+
         dir_path.join(format!("{}.plist", qualified_name))
     }
 }
@@ -173,35 +173,59 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
-        let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
-        eprintln!("plist_path: {:?}", plist_path);
-        let output = launchctl("print", plist_path.to_string_lossy().as_ref())?;
-        eprintln!("output: {:?}", output);
-        if !output.status.success() {
-            if output.status.code() == Some(64) {
-                // 64 is the exit code for a service not found
-                return Ok(crate::ServiceStatus::NotInstalled);
-            } else {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!(
-                        "Command failed with exit code {}: {}",
-                        output.status.code().unwrap_or(-1),
-                        String::from_utf8_lossy(&output.stderr)
-                    ),
-                ));
+        let mut service_name = ctx.label.to_qualified_name();
+        // Due to we could not get the status of a service via a service label, so we have to run this command twice
+        // in first time, if there is a service exists, the output will advice us a full service label with a prefix.
+        // Or it will return nothing, it means the service is not installed(not exists).
+        let mut out: Cow<str> = Cow::Borrowed("");
+        for i in 0..2 {
+            let output = launchctl("print", &service_name)?;
+            if !output.status.success() {
+                if output.status.code() == Some(64) {
+                    // 64 is the exit code for a service not found
+                    out = String::from_utf8_lossy(&output.stderr).trim();
+                    if out.is_empty() {
+                        out = String::from_utf8_lossy(&output.stdout).trim();
+                    }
+                    if i == 0 {
+                        let label = out.lines().find(|line| line.contains(service_name));
+                        match label {
+                            Some(label) => {
+                                service_name = label.trim().to_string();
+                                continue;
+                            }
+                            None => return Ok(crate::ServiceStatus::NotInstalled),
+                        }
+                    } else {
+                        // We have access to the full service label, so it impossible to get the failed status, or it must be input error.
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            format!(
+                                "Command failed with exit code {}: {}",
+                                output.status.code().unwrap_or(-1),
+                                out
+                            ),
+                        ));
+                    }
+                } else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!(
+                            "Command failed with exit code {}: {}",
+                            output.status.code().unwrap_or(-1),
+                            String::from_utf8_lossy(&output.stderr)
+                        ),
+                    ));
+                }
             }
+            out = &String::from_utf8_lossy(&output.stdout);
         }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let lines = stdout
-            .split('\n')
+        let lines = out
+            .lines()
             .map(|s| s.trim())
             .filter(|s| s.contains("state"))
             .collect::<Vec<&str>>();
-        if lines
-            .into_iter()
-            .any(|s| s.contains("not running"))
-        {
+        if lines.into_iter().any(|s| s.contains("not running")) {
             Ok(crate::ServiceStatus::Stopped(None))
         } else {
             Ok(crate::ServiceStatus::Running)
