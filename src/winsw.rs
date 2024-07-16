@@ -482,7 +482,7 @@ fn winsw_exe(cmd: &str, service_name: &str, working_dir_path: &Path) -> io::Resu
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     command.current_dir(working_dir_path);
-    command.arg(cmd).arg(&format!("{}.xml", service_name));
+    command.arg(cmd).arg(format!("{}.xml", service_name));
 
     command.output()
 }

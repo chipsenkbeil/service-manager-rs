@@ -84,7 +84,7 @@ pub mod encoding {
     /// probe the encoding of a bytes slice, and decode it to a string(utf-8)
     pub fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
         #[cfg(windows)]
-        let encoding = current_acp_encoding_no_replacement().unwrap_or(&UTF_8);
+        let encoding = current_acp_encoding_no_replacement().unwrap_or(UTF_8);
         #[cfg(not(windows))]
         let encoding = &UTF_8;
 
