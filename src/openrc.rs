@@ -1,3 +1,5 @@
+use crate::utils::wrap_output;
+
 use super::{
     utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
@@ -6,7 +8,7 @@ use std::{
     ffi::{OsStr, OsString},
     io,
     path::PathBuf,
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
 };
 
 static RC_SERVICE: &str = "rc-service";
@@ -89,11 +91,13 @@ impl ServiceManager for OpenRcServiceManager {
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
-        rc_service("start", &ctx.label.to_script_name())
+        wrap_output(rc_service("start", &ctx.label.to_script_name(), [])?)?;
+        Ok(())
     }
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
-        rc_service("stop", &ctx.label.to_script_name())
+        wrap_output(rc_service("stop", &ctx.label.to_script_name(), [])?)?;
+        Ok(())
     }
 
     fn level(&self) -> ServiceLevel {
@@ -109,27 +113,58 @@ impl ServiceManager for OpenRcServiceManager {
             )),
         }
     }
+
+    fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
+        let output = rc_service("status", &ctx.label.to_script_name(), [])?;
+        match output.status.code() {
+            Some(1) => {
+                let mut stdio = String::from_utf8_lossy(&output.stderr);
+                if stdio.trim().is_empty() {
+                    stdio = String::from_utf8_lossy(&output.stdout);
+                }
+                if stdio.contains("does not exist") {
+                    Ok(crate::ServiceStatus::NotInstalled)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!(
+                            "Failed to get status of service {}: {}",
+                            ctx.label.to_script_name(),
+                            stdio
+                        ),
+                    ))
+                }
+            }
+            Some(0) => Ok(crate::ServiceStatus::Running),
+            Some(3) => Ok(crate::ServiceStatus::Stopped(None)),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "Failed to get status of service {}: {}",
+                    ctx.label.to_script_name(),
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            )),
+        }
+    }
 }
 
-fn rc_service(cmd: &str, service: &str) -> io::Result<()> {
-    let output = Command::new(RC_SERVICE)
+fn rc_service<'a>(
+    cmd: &str,
+    service: &str,
+    args: impl IntoIterator<Item = &'a OsStr>,
+) -> io::Result<Output> {
+    let mut command = Command::new(RC_SERVICE);
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .arg(service)
-        .arg(cmd)
-        .output()?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let msg = String::from_utf8(output.stderr)
-            .ok()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| format!("Failed to {cmd} {service}"));
-
-        Err(io::Error::new(io::ErrorKind::Other, msg))
+        .arg(cmd);
+    for arg in args {
+        command.arg(arg);
     }
+    command.output()
 }
 
 fn rc_update<'a>(

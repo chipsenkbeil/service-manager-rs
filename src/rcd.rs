@@ -6,7 +6,7 @@ use std::{
     ffi::{OsStr, OsString},
     io,
     path::PathBuf,
-    process::{Command, Stdio},
+    process::{Command, ExitStatus, Stdio},
 };
 
 static SERVICE: &str = "service";
@@ -60,7 +60,7 @@ impl ServiceManager for RcdServiceManager {
         )?;
 
         if ctx.autostart {
-            rc_d_script("enable", &service)?;
+            rc_d_script("enable", &service, true)?;
         }
 
         Ok(())
@@ -70,7 +70,7 @@ impl ServiceManager for RcdServiceManager {
         let service = ctx.label.to_script_name();
 
         // Remove the service from rc.conf
-        rc_d_script("delete", &service)?;
+        rc_d_script("delete", &service, true)?;
 
         // Delete the actual service file
         std::fs::remove_file(rc_d_script_path(&service))
@@ -78,12 +78,14 @@ impl ServiceManager for RcdServiceManager {
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
         let service = ctx.label.to_script_name();
-        rc_d_script("start", &service)
+        rc_d_script("start", &service, true)?;
+        Ok(())
     }
 
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
         let service = ctx.label.to_script_name();
-        rc_d_script("stop", &service)
+        rc_d_script("stop", &service, true)?;
+        Ok(())
     }
 
     fn level(&self) -> ServiceLevel {
@@ -99,6 +101,21 @@ impl ServiceManager for RcdServiceManager {
             )),
         }
     }
+
+    fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
+        let service = ctx.label.to_script_name();
+        let status = rc_d_script("status", &service, false)?;
+        match status.code() {
+            Some(0) => Ok(crate::ServiceStatus::Running),
+            Some(3) => Ok(crate::ServiceStatus::Stopped(None)),
+            Some(1) => Ok(crate::ServiceStatus::NotInstalled),
+            _ => {
+                let code = status.code().unwrap_or(-1);
+                let msg = format!("Failed to get status of {service}, exit code: {code}");
+                Err(io::Error::new(io::ErrorKind::Other, msg))
+            }
+        }
+    }
 }
 
 #[inline]
@@ -111,7 +128,7 @@ fn service_dir_path() -> PathBuf {
     PathBuf::from("/usr/local/etc/rc.d")
 }
 
-fn rc_d_script(cmd: &str, service: &str) -> io::Result<()> {
+fn rc_d_script(cmd: &str, service: &str, wrap: bool) -> io::Result<ExitStatus> {
     // NOTE: We MUST mark stdout/stderr as null, otherwise this hangs. Attempting to use output()
     //       does not work. The alternative is to spawn threads to read the stdout and stderr,
     //       but that seems overkill for the purpose of displaying an error message.
@@ -122,12 +139,15 @@ fn rc_d_script(cmd: &str, service: &str) -> io::Result<()> {
         .arg(service)
         .arg(cmd)
         .status()?;
-
-    if status.success() {
-        Ok(())
+    if wrap {
+        if status.success() {
+            Ok(status)
+        } else {
+            let msg = format!("Failed to {cmd} {service}");
+            Err(io::Error::new(io::ErrorKind::Other, msg))
+        }
     } else {
-        let msg = format!("Failed to {cmd} {service}");
-        Err(io::Error::new(io::ErrorKind::Other, msg))
+        Ok(status)
     }
 }
 
