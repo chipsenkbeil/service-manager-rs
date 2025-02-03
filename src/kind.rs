@@ -20,6 +20,9 @@ pub enum ServiceManagerKind {
     /// Use Windows service controller to manage the service
     Sc,
 
+    /// Use Service Control Manager to manage the service
+    Scm,
+
     /// Use systemd to manage the service
     Systemd,
 

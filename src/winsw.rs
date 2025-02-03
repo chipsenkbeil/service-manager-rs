@@ -39,7 +39,9 @@ impl Default for WinSwConfig {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WinSwInstallConfig {
-    pub failure_action: WinSwOnFailureAction,
+    pub description: Option<String>,
+    pub display_name: Option<String>,
+    pub failure_action: WinSwOnFailureAction,   
     pub reset_failure_time: Option<String>,
     pub security_descriptor: Option<String>,
 }
@@ -159,13 +161,24 @@ impl WinSwServiceManager {
 
         // Mandatory values
         Self::write_element(&mut writer, "id", &ctx.label.to_qualified_name())?;
-        Self::write_element(&mut writer, "name", &ctx.label.to_qualified_name())?;
         Self::write_element(&mut writer, "executable", &ctx.program.to_string_lossy())?;
-        Self::write_element(
-            &mut writer,
-            "description",
-            &format!("Service for {}", ctx.label.to_qualified_name()),
-        )?;
+
+        if let Some(display_name) =  &config.install.display_name {
+            Self::write_element(&mut writer, "name", display_name)?;
+        } else {
+            Self::write_element(&mut writer, "name", &ctx.label.to_qualified_name())?;         
+        }
+
+        if let Some(description) = &config.install.description {
+            Self::write_element(&mut writer, "description", description)?;
+        } else {
+            Self::write_element(
+                &mut writer,
+                "description",
+                &format!("Service for {}", ctx.label.to_qualified_name()),
+            )?;
+        }
+
         let args = ctx
             .args
             .clone()
@@ -613,7 +626,7 @@ mod tests {
             username: None,
             working_directory: None,
             environment: None,
-            autostart: true,
+            autostart: true
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -660,7 +673,7 @@ mod tests {
             username: None,
             working_directory: None,
             environment: None,
-            autostart: false,
+            autostart: false
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -707,7 +720,7 @@ mod tests {
             username: None,
             working_directory: None,
             environment: None,
-            autostart: false,
+            autostart: false
         };
 
         let mut config = WinSwConfig::default();
@@ -759,12 +772,14 @@ mod tests {
                 ("ENV1".to_string(), "val1".to_string()),
                 ("ENV2".to_string(), "val2".to_string()),
             ]),
-            autostart: true,
+            autostart: true
         };
 
         let config = WinSwConfig {
             install: WinSwInstallConfig {
+                display_name: Some("org example my_service".to_string()),
                 failure_action: WinSwOnFailureAction::Restart(Some("10 sec".to_string())),
+                description: Some("Service for org.example.my_service".to_string()),
                 reset_failure_time: Some("1 hour".to_string()),
                 security_descriptor: Some(
                     "O:AOG:DAD:(A;;RPWPCCDCLCSWRCWDWOGA;;;S-1-0-0)".to_string(),
@@ -888,7 +903,7 @@ mod tests {
             username: None,
             working_directory: None,
             environment: None,
-            autostart: true,
+            autostart: true
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -931,7 +946,7 @@ mod tests {
             username: None,
             working_directory: None,
             environment: None,
-            autostart: true,
+            autostart: true
         };
 
         let result = WinSwServiceManager::write_service_configuration(

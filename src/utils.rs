@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    fmt::Display,
     fs::OpenOptions,
     io::{self, Write},
     path::Path,
@@ -72,6 +73,33 @@ pub fn wrap_output(output: Output) -> std::io::Result<Output> {
             ),
         ))
     }
+}
+
+// #[inline]
+// pub fn iterator_to_string<T: Iterator<Item: Display>>(iter: T, separator: &str) -> String {
+//     iter.map(|v| v.to_string().trim().to_string())
+//         .filter(|v| !v.is_empty())
+//         .collect::<Vec<String>>()
+//         .join(separator)
+// }
+
+pub fn option_iterator_to_string<T, D>(option_iter: &Option<T>, separator: &str) -> Option<String>
+where
+    for<'a> &'a T: IntoIterator<Item = &'a D>,
+    D: Display + ?Sized,
+{
+    option_iter.as_ref().and_then(|iter| {
+        let parts: Vec<_> = iter
+            .into_iter()
+            .filter_map(|v| {
+                let s = v.to_string();
+                let trimmed = s.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_owned())
+            })
+            .collect();
+
+        (!parts.is_empty()).then(|| parts.join(separator))
+    })
 }
 
 #[cfg(feature = "encoding")]

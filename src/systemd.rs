@@ -1,4 +1,4 @@
-use crate::utils::wrap_output;
+use crate::utils::{option_iterator_to_string, wrap_output};
 
 use super::{
     utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
@@ -22,6 +22,11 @@ pub struct SystemdConfig {
 /// Configuration settings tied to systemd services during installation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SystemdInstallConfig {
+    pub description: Option<String>,
+    pub wants: Option<Vec<String>>,
+    pub require: Option<Vec<String>>,
+    pub after: Option<Vec<String>>,
+    pub before: Option<Vec<String>>,
     pub start_limit_interval_sec: Option<u32>,
     pub start_limit_burst: Option<u32>,
     pub restart: SystemdServiceRestartType,
@@ -31,6 +36,11 @@ pub struct SystemdInstallConfig {
 impl Default for SystemdInstallConfig {
     fn default() -> Self {
         Self {
+            description: None,
+            wants: None,
+            require: None,
+            after: None,
+            before: None,
             start_limit_interval_sec: None,
             start_limit_burst: None,
             restart: SystemdServiceRestartType::OnFailure,
@@ -138,13 +148,7 @@ impl ServiceManager for SystemdServiceManager {
         let script_path = dir_path.join(format!("{script_name}.service"));
         let service = match ctx.contents {
             Some(contents) => contents,
-            _ => make_service(
-                &self.config.install,
-                &script_name,
-                &ctx,
-                self.user,
-                ctx.autostart,
-            ),
+            _ => make_service(&self.config.install, &ctx, self.user, ctx.autostart),
         };
 
         utils::write_file(
@@ -152,6 +156,8 @@ impl ServiceManager for SystemdServiceManager {
             service.as_bytes(),
             SERVICE_FILE_PERMISSIONS,
         )?;
+
+        wrap_output(systemctl_daemon_reload()?)?;
 
         if ctx.autostart {
             wrap_output(systemctl(
@@ -178,7 +184,9 @@ impl ServiceManager for SystemdServiceManager {
             script_path.to_string_lossy().as_ref(),
             self.user,
         )?)?;
-        std::fs::remove_file(script_path)
+        std::fs::remove_file(script_path)?;
+        wrap_output(systemctl_daemon_reload()?)?;
+        Ok(())
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
@@ -242,6 +250,15 @@ fn systemctl(cmd: &str, label: &str, user: bool) -> io::Result<Output> {
     command.arg(cmd).arg(label).output()
 }
 
+fn systemctl_daemon_reload() -> io::Result<Output> {
+    let mut command = Command::new(SYSTEMCTL);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command.arg("daemon-reload").output()
+}
+
 #[inline]
 pub fn systemd_global_dir_path() -> PathBuf {
     PathBuf::from("/etc/systemd/system")
@@ -256,38 +273,65 @@ pub fn systemd_user_dir_path() -> io::Result<PathBuf> {
 
 fn make_service(
     config: &SystemdInstallConfig,
-    description: &str,
     ctx: &ServiceInstallCtx,
     user: bool,
     autostart: bool,
 ) -> String {
-    use std::fmt::Write as _;
-    let SystemdInstallConfig {
-        start_limit_interval_sec,
-        start_limit_burst,
-        restart,
-        restart_sec,
-    } = config;
+    use std::fmt::Write;
+
+    let description = config
+        .description
+        .clone()
+        .unwrap_or_else(|| ctx.label.to_script_name());
+    let exec_start = {
+        let program = ctx.program.to_string_lossy().to_string();
+        let args = ctx
+            .args
+            .iter()
+            .map(|v| v.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("{} {}", program, args).trim().to_string()
+    };
+    let work_dir = ctx
+        .working_directory
+        .as_ref()
+        .map(|v| v.to_string_lossy().to_string())
+        .unwrap_or_default();
 
     let mut service = String::new();
+
     let _ = writeln!(service, "[Unit]");
+
     let _ = writeln!(service, "Description={description}");
 
-    if let Some(x) = start_limit_interval_sec {
+    if let Some(ref x) = config.start_limit_interval_sec {
         let _ = writeln!(service, "StartLimitIntervalSec={x}");
     }
 
-    if let Some(x) = start_limit_burst {
+    if let Some(ref x) = config.start_limit_burst {
         let _ = writeln!(service, "StartLimitBurst={x}");
     }
 
+    if let Some(v) = option_iterator_to_string(&config.require, " ") {
+        let _ = writeln!(service, "Requires={v}");
+    }
+
+    if let Some(v) = option_iterator_to_string(&config.wants, " ") {
+        let _ = writeln!(service, "Wants={v}");
+    }
+
+    if let Some(v) = option_iterator_to_string(&config.after, " ") {
+        let _ = writeln!(service, "After={v}");
+    }
+
+    if let Some(v) = option_iterator_to_string(&config.before, " ") {
+        let _ = writeln!(service, "Before={v}");
+    }
+
     let _ = writeln!(service, "[Service]");
-    if let Some(working_directory) = &ctx.working_directory {
-        let _ = writeln!(
-            service,
-            "WorkingDirectory={}",
-            working_directory.to_string_lossy()
-        );
+    if !work_dir.is_empty() {
+        let _ = writeln!(service, "WorkingDirectory={work_dir}");
     }
 
     if let Some(env_vars) = &ctx.environment {
@@ -295,22 +339,13 @@ fn make_service(
             let _ = writeln!(service, "Environment=\"{var}={val}\"");
         }
     }
+    let _ = writeln!(service, "ExecStart={exec_start}");
 
-    let program = ctx.program.to_string_lossy();
-    let args = ctx
-        .args
-        .clone()
-        .into_iter()
-        .map(|a| a.to_string_lossy().to_string())
-        .collect::<Vec<String>>()
-        .join(" ");
-    let _ = writeln!(service, "ExecStart={program} {args}");
-
-    if *restart != SystemdServiceRestartType::No {
-        let _ = writeln!(service, "Restart={restart}");
+    if config.restart != SystemdServiceRestartType::No {
+        let _ = writeln!(service, "Restart={}", config.restart);
     }
 
-    if let Some(x) = restart_sec {
+    if let Some(ref x) = config.restart_sec {
         let _ = writeln!(service, "RestartSec={x}");
     }
 

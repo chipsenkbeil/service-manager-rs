@@ -1,7 +1,8 @@
 use super::{
     LaunchdServiceManager, OpenRcServiceManager, RcdServiceManager, ScServiceManager,
-    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceManagerKind, ServiceStartCtx,
-    ServiceStopCtx, ServiceUninstallCtx, SystemdServiceManager, WinSwServiceManager,
+    ScmServiceManager, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceManagerKind,
+    ServiceStartCtx, ServiceStopCtx, ServiceUninstallCtx, SystemdServiceManager,
+    WinSwServiceManager,
 };
 use std::io;
 
@@ -12,6 +13,7 @@ pub enum TypedServiceManager {
     OpenRc(OpenRcServiceManager),
     Rcd(RcdServiceManager),
     Sc(ScServiceManager),
+    Scm(ScmServiceManager),
     Systemd(SystemdServiceManager),
     WinSw(WinSwServiceManager),
 }
@@ -25,6 +27,7 @@ macro_rules! using {
             TypedServiceManager::Sc($this) => $expr,
             TypedServiceManager::Systemd($this) => $expr,
             TypedServiceManager::WinSw($this) => $expr,
+            TypedServiceManager::Scm($this) => $expr,
         }
     }};
 }
@@ -81,6 +84,7 @@ impl TypedServiceManager {
             ServiceManagerKind::OpenRc => Self::OpenRc(OpenRcServiceManager::default()),
             ServiceManagerKind::Rcd => Self::Rcd(RcdServiceManager::default()),
             ServiceManagerKind::Sc => Self::Sc(ScServiceManager::default()),
+            ServiceManagerKind::Scm => Self::Scm(ScmServiceManager::default()),
             ServiceManagerKind::Systemd => Self::Systemd(SystemdServiceManager::default()),
             ServiceManagerKind::WinSw => Self::WinSw(WinSwServiceManager::default()),
         }
@@ -121,6 +125,11 @@ impl TypedServiceManager {
         matches!(self, Self::Sc(_))
     }
 
+    /// Returns true if [`ServiceManager`] instance is for `scm`
+    pub fn is_scm(&self) -> bool {
+        matches!(self, Self::Scm(_))
+    }
+
     /// Returns true if [`ServiceManager`] instance is for `systemd`
     pub fn is_systemd(&self) -> bool {
         matches!(self, Self::Systemd(_))
@@ -153,6 +162,12 @@ impl From<super::RcdServiceManager> for TypedServiceManager {
 impl From<super::ScServiceManager> for TypedServiceManager {
     fn from(manager: super::ScServiceManager) -> Self {
         Self::Sc(manager)
+    }
+}
+
+impl From<super::ScmServiceManager> for TypedServiceManager {
+    fn from(manager: super::ScmServiceManager) -> Self {
+        Self::Scm(manager)
     }
 }
 

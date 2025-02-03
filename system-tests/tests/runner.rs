@@ -86,7 +86,7 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
             .join(format!("{service_label}.log"))
             .into_os_string(),
     ];
-    if manager.is_sc() {
+    if manager.is_sc() || manager.is_scm() {
         args.push(OsString::from("--run-as-windows-service"));
     }
 

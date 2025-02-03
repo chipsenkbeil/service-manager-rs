@@ -3,7 +3,6 @@ use super::{
     ServiceUninstallCtx,
 };
 use std::{
-    ffi::{OsStr, OsString},
     io,
     path::PathBuf,
     process::{Command, ExitStatus, Stdio},
@@ -16,7 +15,17 @@ const SCRIPT_FILE_PERMISSIONS: u32 = 0o755;
 
 /// Configuration settings tied to rc.d services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RcdConfig {}
+pub struct RcdConfig {
+    pub install: RcdInstallConfig,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RcdInstallConfig {
+    pub provide: Option<Vec<String>>,
+    pub description: Option<String>,
+    pub require: Option<Vec<String>>,
+    pub before: Option<Vec<String>>,
+}
 
 /// Implementation of [`ServiceManager`] for FreeBSD's [rc.d](https://en.wikipedia.org/wiki/Init#Research_Unix-style/BSD-style)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -48,10 +57,7 @@ impl ServiceManager for RcdServiceManager {
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
         let service = ctx.label.to_script_name();
-        let script = match ctx.contents {
-            Some(contents) => contents,
-            _ => make_script(&service, &service, ctx.program.as_os_str(), ctx.args),
-        };
+        let script = make_script(&ctx, &self.config.install);
 
         utils::write_file(
             &rc_d_script_path(&service),
@@ -151,40 +157,69 @@ fn rc_d_script(cmd: &str, service: &str, wrap: bool) -> io::Result<ExitStatus> {
     }
 }
 
-fn make_script(description: &str, provide: &str, program: &OsStr, args: Vec<OsString>) -> String {
-    let name = provide.replace('-', "_");
-    let program = program.to_string_lossy();
-    let args = args
-        .into_iter()
+fn make_script(ctx: &ServiceInstallCtx, config: &RcdInstallConfig) -> String {
+    if let Some(ref contents) = ctx.contents {
+        return contents.clone();
+    }
+
+    use std::fmt::Write;
+
+    let script_name = ctx.label.to_script_name();
+    let provide = utils::option_iterator_to_string(&config.provide, " ")
+        .unwrap_or(ctx.label.to_script_name());
+    let name = script_name.replace("-", "_");
+    let description = config
+        .description
+        .as_deref()
+        .and_then(|v| {
+            let s = v.trim();
+            (!s.is_empty()).then(|| s)
+        })
+        .unwrap_or(provide.as_str());
+    let program = ctx.program.display().to_string();
+    let args = ctx
+        .args
+        .iter()
         .map(|a| a.to_string_lossy().to_string())
         .collect::<Vec<String>>()
         .join(" ");
-    format!(
-        r#"
-#!/bin/sh
-#
-# PROVIDE: {provide}
-# REQUIRE: LOGIN FILESYSTEMS
-# KEYWORD: shutdown
+    let require = utils::option_iterator_to_string(&config.require, " ")
+        .unwrap_or("LOGIN FILESYSTEMS".to_string());
 
-. /etc/rc.subr
+    let mut script = String::new();
 
-name="{name}"
-desc="{description}"
-rcvar="{name}_enable"
+    _ = writeln!(script, "#!/bin/sh");
+    _ = writeln!(script, "#");
+    _ = writeln!(script, "# PROVIDE: {provide}");
+    _ = writeln!(script, "# REQUIRE: {require}");
+    if let Some(before) = utils::option_iterator_to_string(&config.before, " ") {
+        _ = writeln!(script, "# BEFORE: {before}");
+    }
+    _ = writeln!(script, "# KEYWORD: shutdown");
+    _ = writeln!(script);
+    _ = writeln!(script, ". /etc/rc.subr");
+    _ = writeln!(script);
+    _ = writeln!(script, "name=\"{name}\"");
+    _ = writeln!(script, "desc=\"{description}\"");
+    _ = writeln!(script, "rcvar=\"{name}_enable\"");
+    _ = writeln!(script);
+    _ = writeln!(script, "load_rc_config ${{name}}");
+    _ = writeln!(script);
+    _ = writeln!(script, ": ${{{name}_options=\"{args}\"}}");
+    _ = writeln!(script);
+    if let Some(ref x) = ctx.working_directory {
+        let work_dir = x.display().to_string();
+        _ = writeln!(script, "{name}_chdir=\"{work_dir}\"");
+    }
+    _ = writeln!(script, "pidfile=\"/var/run/${{name}}.pid\"");
+    _ = writeln!(script, "procname=\"{program}\"");
+    _ = writeln!(script, "command=\"/usr/sbin/daemon\"");
+    _ = writeln!(
+        script,
+        "command_args=\"-c -S -T ${{name}} -p ${{pidfile}} ${{procname}} ${{{name}_options}}\""
+    );
+    _ = writeln!(script);
+    _ = writeln!(script, "run_rc_command \"$1\"");
 
-load_rc_config ${{name}}
-
-: ${{{name}_options="{args}"}}
-
-pidfile="/var/run/{name}.pid"
-procname="{program}"
-command="/usr/sbin/daemon"
-command_args="-c -S -T ${{name}} -p ${{pidfile}} ${{procname}} ${{{name}_options}}"
-
-run_rc_command "$1"
-    "#
-    )
-    .trim()
-    .to_string()
+    script
 }

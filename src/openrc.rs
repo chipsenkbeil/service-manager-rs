@@ -1,11 +1,12 @@
-use crate::utils::wrap_output;
+use crate::utils::{wrap_output, option_iterator_to_string};
 
 use super::{
     utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
     ServiceUninstallCtx,
 };
+
 use std::{
-    ffi::{OsStr, OsString},
+    ffi::OsStr,
     io,
     path::PathBuf,
     process::{Command, Output, Stdio},
@@ -19,7 +20,20 @@ const SCRIPT_FILE_PERMISSIONS: u32 = 0o755;
 
 /// Configuration settings tied to OpenRC services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct OpenRcConfig {}
+pub struct OpenRcConfig {
+    pub install: OpenRcInstallConfig,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OpenRcInstallConfig {
+    pub description: Option<String>,
+    pub provide: Option<Vec<String>>,
+    pub want: Option<Vec<String>>,
+    pub need: Option<Vec<String>>,
+    pub after: Option<Vec<String>>,
+    pub before: Option<Vec<String>>,
+    pub uses: Option<Vec<String>>,
+}
 
 /// Implementation of [`ServiceManager`] for Linux's [OpenRC](https://en.wikipedia.org/wiki/OpenRC)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -56,15 +70,7 @@ impl ServiceManager for OpenRcServiceManager {
         let script_name = ctx.label.to_script_name();
         let script_path = dir_path.join(&script_name);
 
-        let script = match ctx.contents {
-            Some(contents) => contents,
-            _ => make_script(
-                &script_name,
-                &script_name,
-                ctx.program.as_os_str(),
-                ctx.args,
-            ),
-        };
+        let script = make_script(&ctx, &self.config.install);
 
         utils::write_file(
             script_path.as_path(),
@@ -208,28 +214,60 @@ fn service_dir_path() -> PathBuf {
     PathBuf::from("/etc/init.d")
 }
 
-fn make_script(description: &str, provide: &str, program: &OsStr, args: Vec<OsString>) -> String {
-    let program = program.to_string_lossy();
-    let args = args
-        .into_iter()
-        .map(|a| a.to_string_lossy().to_string())
-        .collect::<Vec<String>>()
+fn make_script(ctx: &ServiceInstallCtx, config: &OpenRcInstallConfig) -> String {
+    if let Some(ref contents) = ctx.contents {
+        return contents.clone();
+    }
+
+    use std::fmt::Write;
+
+    let provide = option_iterator_to_string(&config.provide, " ")
+        .unwrap_or(ctx.label.to_script_name());
+    let program = ctx.program.display().to_string();
+    let args = ctx
+        .args
+        .iter()
+        .map(|v| v.to_string_lossy().trim().to_string())
+        .collect::<Vec<_>>()
         .join(" ");
-    format!(
-        r#"
-#!/sbin/openrc-run
+    let destription = config
+        .description
+        .clone()
+        .unwrap_or(ctx.label.to_script_name());
+    let workdir = ctx.working_directory.as_ref();
 
-description="{description}"
-command="{program}"
-command_args="{args}"
-pidfile="/run/${{RC_SVCNAME}}.pid"
-command_background=true
+    let mut script = String::new();
 
-depend() {{
-    provide {provide}
-}}
-    "#
-    )
-    .trim()
-    .to_string()
+    let _ = writeln!(script, "!/sbin/openrc-run");
+    let _ = writeln!(script);
+    let _ = writeln!(script, "description=\"{destription}\"");
+    let _ = writeln!(script, "command=\"{program}\"");
+    let _ = writeln!(script, "command_args=\"{args}\"");
+    let _ = writeln!(script, "pidfile=\"/run/${{RC_SVCNAME}}.pid\"");
+    let _ = writeln!(script, "command_background=\"yes\"");
+    if let Some(workdir) = workdir {
+        let workdir = workdir.display().to_string();
+        let _ = writeln!(script, "directory=\"{workdir}\"");
+    }
+    let _ = writeln!(script);
+    let _ = writeln!(script, "depend() {{");
+    let _ = writeln!(script, "    provide {provide}");
+    if let Some(v) = option_iterator_to_string(&config.need, " ") {
+        let _ = writeln!(script, "    need {v}");
+    }
+    if let Some(v) = option_iterator_to_string(&config.want, " ") {
+        let _ = writeln!(script, "    want {v}");
+    }
+    if let Some(v) = option_iterator_to_string(&config.uses, " ") {
+        let _ = writeln!(script, "    use {v}");
+    }
+    if let Some(v) = option_iterator_to_string(&config.after, " ") {
+        let _ = writeln!(script, "    after {v}");
+    }
+    if let Some(v) = option_iterator_to_string(&config.before, " ") {
+        let _ = writeln!(script, "    before {v}");
+    }
+    let _ = writeln!(script, "}}");
+
+    script
 }

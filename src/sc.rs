@@ -1,4 +1,4 @@
-use crate::utils::wrap_output;
+use crate::utils::{wrap_output, option_iterator_to_string};
 
 use super::{
     ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
@@ -43,6 +43,10 @@ pub struct ScInstallConfig {
 
     /// Severity of the error if the windows service fails when the computer is started
     pub error_severity: WindowsErrorSeverity,
+
+    pub display_name: Option<String>,
+
+    pub dependencies: Option<Vec<String>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -187,7 +191,6 @@ impl ServiceManager for ScServiceManager {
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
         let service_name = ctx.label.to_qualified_name();
-
         let service_type = OsString::from(self.config.install.service_type.to_string());
         let error_severity = OsString::from(self.config.install.error_severity.to_string());
         let start_type = if ctx.autostart {
@@ -198,38 +201,46 @@ impl ServiceManager for ScServiceManager {
             // special value will override `autostart`.
             OsString::from(self.config.install.start_type.to_string())
         };
-
+        let depend = option_iterator_to_string(&self.config.install.dependencies, "/");
+        let display_name = self.config.install.display_name.as_deref().and_then(|v| {
+            let s = v.trim();
+            (!s.is_empty()).then(|| s)
+        });
         // Build our binary including arguments, following similar approach as windows-service-rs
         let mut binpath = OsString::new();
+        
         binpath.push(shell_escape::escape(Cow::Borrowed(ctx.program.as_ref())));
         for arg in ctx.args_iter() {
             binpath.push(" ");
             binpath.push(shell_escape::escape(Cow::Borrowed(arg)));
         }
 
-        let display_name = OsStr::new(&service_name);
+        let mut service_create_args = vec![
+            // type= {service_type}
+            OsStr::new("type="),
+            service_type.as_os_str(),
+            // start= {start_type}
+            OsStr::new("start="),
+            start_type.as_os_str(),
+            // error= {error_severity}
+            OsStr::new("error="),
+            error_severity.as_os_str(),
+            // binpath= "{program} {args}"
+            OsStr::new("binpath="),
+            binpath.as_os_str(),
+        ];
+        if let Some(v) = display_name {
+            // displayname= {display_name}
+            service_create_args.push(OsStr::new("displayname="));
+            service_create_args.push(OsStr::new(v));
+        }
+        if let Some(ref depend) = depend {
+            // depend= {dependencies}
+            service_create_args.push(OsStr::new("depend="));
+            service_create_args.push(OsStr::new(depend));
+        }
 
-        wrap_output(sc_exe(
-            "create",
-            &service_name,
-            [
-                // type= {service_type}
-                OsStr::new("type="),
-                service_type.as_os_str(),
-                // start= {start_type}
-                OsStr::new("start="),
-                start_type.as_os_str(),
-                // error= {error_severity}
-                OsStr::new("error="),
-                error_severity.as_os_str(),
-                // binpath= "{program} {args}"
-                OsStr::new("binpath="),
-                binpath.as_os_str(),
-                // displayname= {display_name}
-                OsStr::new("displayname="),
-                display_name,
-            ],
-        )?)?;
+        wrap_output(sc_exe("create", &service_name, service_create_args)?)?;
         Ok(())
     }
 

@@ -32,6 +32,9 @@ xml-rs = "0.8.19"
 encoding_rs = { version = "0.8", optional = true }
 encoding-utils = { version ="0.1", optional = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7.0"
+
 [dev-dependencies]
 assert_fs = "1.0.13"
 indoc = "2.0.4"

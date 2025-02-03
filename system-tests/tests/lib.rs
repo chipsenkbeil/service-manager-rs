@@ -72,6 +72,12 @@ fn should_support_winsw_for_system_services() {
 }
 
 #[test]
+#[cfg(target_os = "windows")]
+fn should_support_scm_for_system_services() {
+    runner::run_test_n(ScmServiceManager::system(), TEST_ITER_CNT)
+}
+
+#[test]
 #[cfg(target_os = "linux")]
 fn should_support_systemd_for_system_services() {
     runner::run_test_n(SystemdServiceManager::system(), TEST_ITER_CNT)
