@@ -344,23 +344,23 @@ mod scm_handler {
     use std::io;
     const ERROR_MSG: &str = "Service control manager is not supported on this platform";
 
-    pub fn service_install(_ctx: super::ServiceInstallCtx) -> std::io::Result<()> {
+    pub fn service_install(_ctx: &super::ServiceInstallCtx) -> std::io::Result<()> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 
-    pub fn service_uninstall(_ctx: super::ServiceUninstallCtx) -> std::io::Result<()> {
+    pub fn service_uninstall(_ctx: &super::ServiceUninstallCtx) -> std::io::Result<()> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 
-    pub fn service_start(_ctx: super::ServiceStartCtx) -> std::io::Result<()> {
+    pub fn service_start(_ctx: &super::ServiceStartCtx) -> std::io::Result<()> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 
-    pub fn service_stop(_ctx: super::ServiceStopCtx) -> std::io::Result<()> {
+    pub fn service_stop(_ctx: &super::ServiceStopCtx) -> std::io::Result<()> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 
-    pub fn service_status(_ctx: super::ServiceStatusCtx) -> std::io::Result<crate::ServiceStatus> {
+    pub fn service_status(_ctx: &super::ServiceStatusCtx) -> std::io::Result<crate::ServiceStatus> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 }
