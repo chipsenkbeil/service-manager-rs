@@ -1,7 +1,6 @@
-
 use super::{
     ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStatusCtx,
-    ServiceStopCtx, ServiceUninstallCtx
+    ServiceStopCtx, ServiceUninstallCtx,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -41,7 +40,7 @@ pub struct ScmInstallConfig {
 pub enum ScmServiceType {
     Kernel = 1u32,
     FileSys = 2u32,
-    Own = 16u32, 
+    Own = 16u32,
     Share = 32u32,
     UserOwn = 80u32,
     UserShare = 96u32,
@@ -51,7 +50,7 @@ pub enum ScmServiceType {
 impl Default for ScmServiceType {
     fn default() -> Self {
         Self::Own
-    }    
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -61,7 +60,7 @@ pub enum ScmStartType {
     SystemStart = 1u32,
     AutoStart = 2u32,
     OnDemand = 3u32,
-    Disabled = 4u32
+    Disabled = 4u32,
 }
 
 impl Default for ScmStartType {
@@ -70,33 +69,30 @@ impl Default for ScmStartType {
     }
 }
 
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum ScmErrorControl {
     Ignore = 0u32,
     Normal = 1u32,
     Severe = 2u32,
-    Critical = 3u32
+    Critical = 3u32,
 }
 
 impl Default for ScmErrorControl {
     fn default() -> Self {
         Self::Normal
-    }    
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct ScmServiceManager {
-    pub config: ScmConfig
+    pub config: ScmConfig,
 }
-
-
 
 impl ScmServiceManager {
     pub fn system() -> Self {
         Self {
-            config: ScmConfig::default()
+            config: ScmConfig::default(),
         }
     }
 
@@ -156,6 +152,10 @@ mod scm_handler {
         io,
     };
 
+    use super::{
+        ServiceInstallCtx, ServiceStartCtx, ServiceStatusCtx, ServiceStopCtx, ServiceUninstallCtx,
+    };
+
     use windows_service::{
         service::{
             ServiceAccess, ServiceDependency, ServiceErrorControl, ServiceExitCode, ServiceInfo,
@@ -164,7 +164,10 @@ mod scm_handler {
         service_manager::{ServiceManager, ServiceManagerAccess},
     };
 
-    pub fn service_install(ctx: &super::ServiceInstallCtx, install_config: &crate::ScmInstallConfig) -> std::io::Result<()> {
+    pub fn service_install(
+        ctx: &ServiceInstallCtx,
+        install_config: &crate::ScmInstallConfig,
+    ) -> std::io::Result<()> {
         let manager = get_win_service_manager()?;
         let name = ctx.label.to_qualified_name().parse::<OsString>().unwrap();
         let display_name = if let Some(ref v) = install_config.display_name {
@@ -178,9 +181,14 @@ mod scm_handler {
         let start_type = if let Some(v) = install_config.start_type {
             ServiceStartType::from_raw(v as u32).unwrap()
         } else {
-            if ctx.autostart { ServiceStartType::AutoStart } else { ServiceStartType::OnDemand }
+            if ctx.autostart {
+                ServiceStartType::AutoStart
+            } else {
+                ServiceStartType::OnDemand
+            }
         };
-        let dependencies: Vec<ServiceDependency> = if let Some(ref v) = install_config.dependencies {
+        let dependencies: Vec<ServiceDependency> = if let Some(ref v) = install_config.dependencies
+        {
             v.iter()
                 .map(|s| ServiceDependency::from_system_identifier(s))
                 .collect()
@@ -209,12 +217,14 @@ mod scm_handler {
                 )
             })?;
 
-        service.set_delayed_auto_start(install_config.delay_autostart).map_err(|e| {
-            std::io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to set service delayed autostart: {}", e),
-            )
-        })?;
+        service
+            .set_delayed_auto_start(install_config.delay_autostart)
+            .map_err(|e| {
+                std::io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to set service delayed autostart: {}", e),
+                )
+            })?;
 
         if let Some(ref v) = install_config.description {
             service.set_description(v).map_err(|e| {
@@ -228,7 +238,7 @@ mod scm_handler {
         Ok(())
     }
 
-    pub fn service_uninstall(ctx: &super::ServiceUninstallCtx) -> std::io::Result<()> {
+    pub fn service_uninstall(ctx: &ServiceUninstallCtx) -> std::io::Result<()> {
         let manager = get_win_service_manager()?;
         let service = manager
             .open_service(ctx.label.to_qualified_name(), ServiceAccess::DELETE)
@@ -247,7 +257,7 @@ mod scm_handler {
         Ok(())
     }
 
-    pub fn service_start(ctx: &super::ServiceStartCtx) -> std::io::Result<()> {
+    pub fn service_start(ctx: &ServiceStartCtx) -> std::io::Result<()> {
         let manager = get_win_service_manager()?;
         let service = manager
             .open_service(ctx.label.to_qualified_name(), ServiceAccess::START)
@@ -268,7 +278,7 @@ mod scm_handler {
         Ok(())
     }
 
-    pub fn service_stop(ctx: &super::ServiceStopCtx) -> std::io::Result<()> {
+    pub fn service_stop(ctx: &ServiceStopCtx) -> std::io::Result<()> {
         let manager = get_win_service_manager()?;
         let service = manager
             .open_service(ctx.label.to_qualified_name(), ServiceAccess::STOP)
@@ -289,7 +299,7 @@ mod scm_handler {
         Ok(())
     }
 
-    pub fn service_status(ctx: &super::ServiceStatusCtx) -> std::io::Result<crate::ServiceStatus> {
+    pub fn service_status(ctx: &ServiceStatusCtx) -> std::io::Result<crate::ServiceStatus> {
         let manager = get_win_service_manager()?;
 
         match manager.open_service(ctx.label.to_qualified_name(), ServiceAccess::QUERY_STATUS) {
@@ -336,31 +346,35 @@ mod scm_handler {
             },
         )
     }
-    
 }
 
 #[cfg(not(target_os = "windows"))]
 mod scm_handler {
+    use super::ScmInstallConfig;
+    use super::{
+        ServiceInstallCtx, ServiceStartCtx, ServiceStatusCtx, ServiceStopCtx, ServiceUninstallCtx,
+    };
     use std::io;
+
     const ERROR_MSG: &str = "Service control manager is not supported on this platform";
 
-    pub fn service_install(_ctx: &super::ServiceInstallCtx) -> std::io::Result<()> {
+    pub fn service_install(_: &ServiceInstallCtx, _: &ScmInstallConfig) -> std::io::Result<()> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 
-    pub fn service_uninstall(_ctx: &super::ServiceUninstallCtx) -> std::io::Result<()> {
+    pub fn service_uninstall(_: &ServiceUninstallCtx) -> std::io::Result<()> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 
-    pub fn service_start(_ctx: &super::ServiceStartCtx) -> std::io::Result<()> {
+    pub fn service_start(_: &ServiceStartCtx) -> std::io::Result<()> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 
-    pub fn service_stop(_ctx: &super::ServiceStopCtx) -> std::io::Result<()> {
+    pub fn service_stop(_: &ServiceStopCtx) -> std::io::Result<()> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 
-    pub fn service_status(_ctx: &super::ServiceStatusCtx) -> std::io::Result<crate::ServiceStatus> {
+    pub fn service_status(_: &ServiceStatusCtx) -> std::io::Result<crate::ServiceStatus> {
         Err(io::Error::new(io::ErrorKind::Unsupported, ERROR_MSG))
     }
 }
