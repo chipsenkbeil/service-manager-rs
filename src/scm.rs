@@ -355,6 +355,14 @@ mod scm_handler {
         ServiceInstallCtx, ServiceStartCtx, ServiceStatusCtx, ServiceStopCtx, ServiceUninstallCtx,
     };
     use std::io;
+    use super::{
+        ServiceInstallCtx,
+        ServiceUninstallCtx,
+        ServiceStartCtx,
+        ServiceStopCtx,
+        ServiceStatusCtx
+    };
+    use super::ScmInstallConfig;
 
     const ERROR_MSG: &str = "Service control manager is not supported on this platform";
 
