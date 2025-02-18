@@ -121,6 +121,7 @@ impl ServiceManager for LaunchdServiceManager {
                 ctx.working_directory.clone(),
                 ctx.environment.clone(),
                 ctx.autostart,
+                ctx.disable_restart_on_failure
             ),
         };
 
@@ -267,6 +268,7 @@ fn make_plist<'a>(
     working_directory: Option<PathBuf>,
     environment: Option<Vec<(String, String)>>,
     autostart: bool,
+    disable_restart_on_failure: bool,
 ) -> String {
     let mut dict = Dictionary::new();
 
@@ -280,7 +282,9 @@ fn make_plist<'a>(
         Value::Array(program_arguments),
     );
 
-    dict.insert("KeepAlive".to_string(), Value::Boolean(config.keep_alive));
+    if !disable_restart_on_failure {
+        dict.insert("KeepAlive".to_string(), Value::Boolean(config.keep_alive));
+    }
 
     if let Some(username) = username {
         dict.insert("UserName".to_string(), Value::String(username));

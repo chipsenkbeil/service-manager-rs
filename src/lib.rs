@@ -244,6 +244,11 @@ pub struct ServiceInstallCtx {
 
     /// Specify whether the service should automatically start on reboot
     pub autostart: bool,
+
+    /// Optionally disable a service from restarting when it exits with a failure
+    ///
+    /// This could overwrite the platform specific service manager config.
+    pub disable_restart_on_failure: bool,
 }
 
 impl ServiceInstallCtx {

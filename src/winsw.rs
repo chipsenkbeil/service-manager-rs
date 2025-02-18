@@ -194,16 +194,20 @@ impl WinSwServiceManager {
         }
 
         // Optional install elements
-        let (action, delay) = match &config.install.failure_action {
-            WinSwOnFailureAction::Restart(delay) => ("restart", delay.as_deref()),
-            WinSwOnFailureAction::Reboot => ("reboot", None),
-            WinSwOnFailureAction::None => ("none", None),
-        };
-        let attributes = delay.map_or_else(
-            || vec![("action", action)],
-            |d| vec![("action", action), ("delay", d)],
-        );
-        Self::write_element_with_attributes(&mut writer, "onfailure", &attributes, None)?;
+        if ctx.disable_restart_on_failure {
+            Self::write_element(&mut writer, "onfailure", "none")?;
+        } else {
+            let (action, delay) = match &config.install.failure_action {
+                WinSwOnFailureAction::Restart(delay) => ("restart", delay.as_deref()),
+                WinSwOnFailureAction::Reboot => ("reboot", None),
+                WinSwOnFailureAction::None => ("none", None),
+            };
+            let attributes = delay.map_or_else(
+                || vec![("action", action)],
+                |d| vec![("action", action), ("delay", d)],
+            );
+            Self::write_element_with_attributes(&mut writer, "onfailure", &attributes, None)?;
+        }
 
         if let Some(reset_time) = &config.install.reset_failure_time {
             Self::write_element(&mut writer, "resetfailure", reset_time)?;
@@ -614,6 +618,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: true,
+            disable_restart_on_failure: false,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -661,6 +666,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: false,
+            disable_restart_on_failure: false,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -708,6 +714,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: false,
+            disable_restart_on_failure: false,
         };
 
         let mut config = WinSwConfig::default();
@@ -760,6 +767,7 @@ mod tests {
                 ("ENV2".to_string(), "val2".to_string()),
             ]),
             autostart: true,
+            disable_restart_on_failure: false,
         };
 
         let config = WinSwConfig {
@@ -889,6 +897,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: true,
+            disable_restart_on_failure: false,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -932,6 +941,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: true,
+            disable_restart_on_failure: false,
         };
 
         let result = WinSwServiceManager::write_service_configuration(

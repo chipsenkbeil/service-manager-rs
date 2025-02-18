@@ -144,6 +144,7 @@ impl ServiceManager for SystemdServiceManager {
                 &ctx,
                 self.user,
                 ctx.autostart,
+                ctx.disable_restart_on_failure
             ),
         };
 
@@ -260,6 +261,7 @@ fn make_service(
     ctx: &ServiceInstallCtx,
     user: bool,
     autostart: bool,
+    disable_restart_on_failure: bool
 ) -> String {
     use std::fmt::Write as _;
     let SystemdInstallConfig {
@@ -306,12 +308,14 @@ fn make_service(
         .join(" ");
     let _ = writeln!(service, "ExecStart={program} {args}");
 
-    if *restart != SystemdServiceRestartType::No {
-        let _ = writeln!(service, "Restart={restart}");
-    }
+    if !disable_restart_on_failure {
+        if *restart != SystemdServiceRestartType::No {
+            let _ = writeln!(service, "Restart={restart}");
+        }
 
-    if let Some(x) = restart_sec {
-        let _ = writeln!(service, "RestartSec={x}");
+        if let Some(x) = restart_sec {
+            let _ = writeln!(service, "RestartSec={x}");
+        }
     }
 
     // For Systemd, a user-mode service definition should *not* specify the username, since it runs
