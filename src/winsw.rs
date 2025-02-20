@@ -452,6 +452,11 @@ impl ServiceManager for WinSwServiceManager {
             if stderr.contains("System.IO.FileNotFoundException: Unable to locate WinSW.[xml|yml] file within executable directory") {
                 return Ok(ServiceStatus::NotInstalled);
             }
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Unsuccessful output status seems to be incorrect sometimes
+            if stdout.contains("Active") {
+                return Ok(ServiceStatus::Running);
+            }
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("Failed to get service status: {}", stderr),
