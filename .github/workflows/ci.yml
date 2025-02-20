@@ -118,6 +118,11 @@ jobs:
           - { manager: OpenRC, test: openrc_for_system }
     steps:
       - uses: actions/checkout@v2
+      - name: Set Alpine repositories
+        run: |
+          echo "http://dl-cdn.alpinelinux.org/alpine/v3.16/main" > /etc/apk/repositories
+          echo "http://dl-cdn.alpinelinux.org/alpine/v3.16/community" >> /etc/apk/repositories
+          apk update && apk upgrade
       - name: Install base dependencies
         run: apk add --update --no-cache openrc busybox-initscripts build-base libc6-compat curl sudo
       - name: Configure passwordless sudo

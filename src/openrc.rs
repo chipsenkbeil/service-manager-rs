@@ -84,7 +84,7 @@ impl ServiceManager for OpenRcServiceManager {
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
         rc_update(
-            "delete",
+            "del",
             &ctx.label.to_script_name(),
             [OsStr::new("default")],
         )
