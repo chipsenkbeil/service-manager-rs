@@ -194,20 +194,21 @@ impl WinSwServiceManager {
         }
 
         // Optional install elements
-        if ctx.disable_restart_on_failure {
-            Self::write_element(&mut writer, "onfailure", "none")?;
+        let (action, delay) = if ctx.disable_restart_on_failure {
+            ("none", None)
         } else {
-            let (action, delay) = match &config.install.failure_action {
+            match &config.install.failure_action {
                 WinSwOnFailureAction::Restart(delay) => ("restart", delay.as_deref()),
                 WinSwOnFailureAction::Reboot => ("reboot", None),
                 WinSwOnFailureAction::None => ("none", None),
-            };
-            let attributes = delay.map_or_else(
-                || vec![("action", action)],
-                |d| vec![("action", action), ("delay", d)],
-            );
-            Self::write_element_with_attributes(&mut writer, "onfailure", &attributes, None)?;
-        }
+            }
+        };
+
+        let attributes = delay.map_or_else(
+            || vec![("action", action)],
+            |d| vec![("action", action), ("delay", d)],
+        );
+        Self::write_element_with_attributes(&mut writer, "onfailure", &attributes, None)?;
 
         if let Some(reset_time) = &config.install.reset_failure_time {
             Self::write_element(&mut writer, "resetfailure", reset_time)?;
