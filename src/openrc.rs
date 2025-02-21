@@ -83,11 +83,15 @@ impl ServiceManager for OpenRcServiceManager {
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
-        rc_update(
-            "delete",
+        // If the script is configured to run at boot, remove it
+        let _ = rc_update(
+            "del",
             &ctx.label.to_script_name(),
             [OsStr::new("default")],
-        )
+        );
+
+        // Uninstall service by removing the script
+        std::fs::remove_file(service_dir_path().join(&ctx.label.to_script_name()))
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {

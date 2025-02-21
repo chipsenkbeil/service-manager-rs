@@ -121,8 +121,14 @@ impl ServiceManager for LaunchdServiceManager {
                 ctx.working_directory.clone(),
                 ctx.environment.clone(),
                 ctx.autostart,
+                ctx.disable_restart_on_failure
             ),
         };
+
+        // Unload old service first if it exists
+        if plist_path.exists() {
+            let _ = wrap_output(launchctl("remove", ctx.label.to_qualified_name().as_str())?);
+        }
 
         utils::write_file(
             plist_path.as_path(),
@@ -130,29 +136,32 @@ impl ServiceManager for LaunchdServiceManager {
             PLIST_FILE_PERMISSIONS,
         )?;
 
-        if ctx.autostart {
-            wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
-        }
+        // Load the service.
+        // If "KeepAlive" is set to true, the service will immediately start.
+        wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
 
         Ok(())
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
         let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
-
-        wrap_output(launchctl("unload", plist_path.to_string_lossy().as_ref())?)?;
-        std::fs::remove_file(plist_path)
-    }
-
-    fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
-        let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
-        wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
+        // Service might already be removed (if it has "KeepAlive")
+        let _ = wrap_output(launchctl("remove", ctx.label.to_qualified_name().as_str())?);
+        let _ = std::fs::remove_file(plist_path);
         Ok(())
     }
 
+    fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
+        // To start services that do not have "KeepAlive" set to true
+        wrap_output(launchctl("start", ctx.label.to_qualified_name().as_str())?)?;
+        Ok(())
+    }
+
+    /// Stops a service.
+    ///
+    /// To stop a service with "KeepAlive" enabled, call `uninstall` instead.
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
-        let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
-        wrap_output(launchctl("unload", plist_path.to_string_lossy().as_ref())?)?;
+        wrap_output(launchctl("stop", ctx.label.to_qualified_name().as_str())?)?;
         Ok(())
     }
 
@@ -267,6 +276,7 @@ fn make_plist<'a>(
     working_directory: Option<PathBuf>,
     environment: Option<Vec<(String, String)>>,
     autostart: bool,
+    disable_restart_on_failure: bool,
 ) -> String {
     let mut dict = Dictionary::new();
 
@@ -280,7 +290,9 @@ fn make_plist<'a>(
         Value::Array(program_arguments),
     );
 
-    dict.insert("KeepAlive".to_string(), Value::Boolean(config.keep_alive));
+    if !disable_restart_on_failure {
+        dict.insert("KeepAlive".to_string(), Value::Boolean(config.keep_alive));
+    }
 
     if let Some(username) = username {
         dict.insert("UserName".to_string(), Value::String(username));

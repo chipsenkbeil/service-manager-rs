@@ -31,7 +31,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-service-manager = "0.7"
+service-manager = "0.8"
 ```
 
 ## Examples
@@ -69,6 +69,7 @@ manager.install(ServiceInstallCtx {
     working_directory: None, // Optional String for the working directory for the service process.
     environment: None, // Optional list of environment variables to supply the service process.
     autostart: true, // Specify whether the service should automatically start upon OS reboot.
+    disable_restart_on_failure: false, // Services restart on crash by default.
 }).expect("Failed to install");
 
 // Start our service using the underlying service management platform
@@ -144,6 +145,7 @@ manager.install(ServiceInstallCtx {
     working_directory: None, // Optional String for the working directory for the service process.
     environment: None, // Optional list of environment variables to supply the service process.
     autostart: true, // Specify whether the service should automatically start upon OS reboot.
+    disable_restart_on_failure: false, // Services restart on crash by default.
 }).expect("Failed to install");
 ```
 

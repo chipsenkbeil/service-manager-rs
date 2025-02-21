@@ -90,6 +90,24 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
         args.push(OsString::from("--run-as-windows-service"));
     }
 
+    eprintln!("Cleanup previous test if exists");
+    if matches!(
+        manager
+            .status(ServiceStatusCtx {
+                label: service_label.clone(),
+            })
+            .unwrap(),
+        ServiceStatus::Stopped(_) | ServiceStatus::Running
+    ) {
+        manager
+            .uninstall(ServiceUninstallCtx {
+                label: service_label.clone(),
+            })
+            .unwrap();
+
+        wait();
+    }
+
     eprintln!("Checking status of service");
     assert!(
         matches!(
@@ -114,7 +132,8 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
             username: username.clone(),
             working_directory: None,
             environment: None,
-            autostart: true,
+            autostart: false,
+            disable_restart_on_failure: true,
         })
         .unwrap();
 

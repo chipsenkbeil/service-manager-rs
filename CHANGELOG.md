@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2025-02-21
+
+### Added
+
+- Provide the ability to disable service restarts on failure. This is useful because certain
+  applications don't want this behaviour. This is a breaking change because users who upgrade will
+  need to update their code for the new field in the `ServiceInstallCtx` struct.
+
 ## [0.7.1] - 2024-07-13
 
 ### Fixed
