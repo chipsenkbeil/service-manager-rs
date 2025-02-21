@@ -53,7 +53,8 @@ jobs:
           - { rust: stable, os: ubuntu-latest, manager: systemd, test: systemd_for_user }
           - { rust: stable, os: ubuntu-latest, manager: systemd, test: systemd_for_system, elevated: sudo env PATH="$PATH" }
           - { rust: stable, os: macos-latest, manager: launchd, test: launchd_for_user }
-          - { rust: stable, os: macos-latest, manager: launchd, test: launchd_for_system, elevated: sudo }
+          - { rust: stable, os: macos-latest, manager: launchd, test: should_support_launchd_for_system_services, elevated: sudo, args: "--exact" }
+          - { rust: stable, os: macos-latest, manager: launchd, test: should_support_launchd_for_system_services_running_as_specific_user, elevated: sudo, args: "--exact" }
           - { rust: stable, os: windows-latest, manager: sc, test: sc_for_system }
           - { rust: stable, os: windows-latest, manager: winsw, test: winsw_for_system }
     steps:
@@ -76,7 +77,7 @@ jobs:
       - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
         run: |
           ${{ matrix.elevated }} rustup default stable
-          ${{ matrix.elevated }} cargo test -p system-tests ${{ matrix.test }} -- --nocapture
+          ${{ matrix.elevated }} cargo test -p system-tests ${{ matrix.test }} -- ${{ matrix.args }} --nocapture
   # NOTE: This is disabled via `if: false` due to failures related to the test environment.
   test-freebsd:
     name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (FreeBSD)"

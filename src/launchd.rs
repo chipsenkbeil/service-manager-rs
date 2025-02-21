@@ -127,7 +127,7 @@ impl ServiceManager for LaunchdServiceManager {
 
         // Unload old service first if it exists
         if plist_path.exists() {
-            let _ = wrap_output(launchctl("unload", plist_path.to_string_lossy().as_ref())?);
+            let _ = wrap_output(launchctl("remove", ctx.label.to_qualified_name().as_str())?);
         }
 
         utils::write_file(
