@@ -63,8 +63,7 @@ pub fn wrap_output(output: Output) -> std::io::Result<Output> {
         if msg.is_empty() {
             msg = Cow::Borrowed("Failed to execute command with no output");
         }
-        Err(io::Error::new(
-            io::ErrorKind::Other,
+        Err(io::Error::other(
             format!(
                 "Command failed with exit code {}: {}",
                 output.status.code().unwrap_or(-1),

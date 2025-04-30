@@ -96,7 +96,7 @@ impl ServiceManager for LaunchdServiceManager {
         match which::which(LAUNCHCTL) {
             Ok(_) => Ok(true),
             Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -208,8 +208,7 @@ impl ServiceManager for LaunchdServiceManager {
                         }
                     } else {
                         // We have access to the full service label, so it impossible to get the failed status, or it must be input error.
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
+                        return Err(io::Error::other(
                             format!(
                                 "Command failed with exit code {}: {}",
                                 output.status.code().unwrap_or(-1),
@@ -218,8 +217,7 @@ impl ServiceManager for LaunchdServiceManager {
                         ));
                     }
                 } else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
+                    return Err(io::Error::other(
                         format!(
                             "Command failed with exit code {}: {}",
                             output.status.code().unwrap_or(-1),

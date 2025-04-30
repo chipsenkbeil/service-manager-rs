@@ -121,7 +121,7 @@ impl ServiceManager for SystemdServiceManager {
         match which::which(SYSTEMCTL) {
             Ok(_) => Ok(true),
             Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -216,8 +216,7 @@ impl ServiceManager for SystemdServiceManager {
             Some(4) => Ok(crate::ServiceStatus::NotInstalled),
             Some(3) => Ok(crate::ServiceStatus::Stopped(None)),
             Some(0) => Ok(crate::ServiceStatus::Running),
-            _ => Err(io::Error::new(
-                io::ErrorKind::Other,
+            _ => Err(io::Error::other(
                 format!(
                     "Command failed with exit code {}: {}",
                     output.status.code().unwrap_or(-1),

@@ -29,7 +29,7 @@ pub struct WinSwConfig {
 
 impl Default for WinSwConfig {
     fn default() -> Self {
-        WinSwConfig {
+        Self {
             install: WinSwInstallConfig::default(),
             options: WinSwOptionsConfig::default(),
             service_definition_dir_path: PathBuf::from("C:\\ProgramData\\service-manager"),
@@ -141,8 +141,7 @@ impl WinSwServiceManager {
                 standalone: None,
             })
             .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
+                io::Error::other(
                     format!("Writing service config failed: {}", e),
                 )
             })?;
@@ -151,8 +150,7 @@ impl WinSwServiceManager {
         writer
             .write(XmlEvent::start_element("service"))
             .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
+                io::Error::other(
                     format!("Writing service config failed: {}", e),
                 )
             })?;
@@ -269,8 +267,7 @@ impl WinSwServiceManager {
 
         // </service>
         writer.write(XmlEvent::end_element()).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("Writing service config failed: {}", e),
             )
         })?;
@@ -284,20 +281,17 @@ impl WinSwServiceManager {
         value: &str,
     ) -> io::Result<()> {
         writer.write(XmlEvent::start_element(name)).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("Failed to write element '{}': {}", name, e),
             )
         })?;
         writer.write(XmlEvent::characters(value)).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("Failed to write value for element '{}': {}", name, e),
             )
         })?;
         writer.write(XmlEvent::end_element()).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("Failed to end element '{}': {}", name, e),
             )
         })?;
@@ -315,24 +309,21 @@ impl WinSwServiceManager {
             start_element = start_element.attr(attr_name, attr_value);
         }
         writer.write(start_element).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("Failed to write value for element '{}': {}", name, e),
             )
         })?;
 
         if let Some(val) = value {
             writer.write(XmlEvent::characters(val)).map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
+                io::Error::other(
                     format!("Failed to write value for element '{}': {}", name, e),
                 )
             })?;
         }
 
         writer.write(XmlEvent::end_element()).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("Failed to end element '{}': {}", name, e),
             )
         })?;
@@ -363,7 +354,7 @@ impl ServiceManager for WinSwServiceManager {
                 }
                 Err(_) => Ok(false),
             },
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -457,8 +448,7 @@ impl ServiceManager for WinSwServiceManager {
             if stdout.contains("Active") {
                 return Ok(ServiceStatus::Running);
             }
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Err(io::Error::other(
                 format!("Failed to get service status: {}", stderr),
             ));
         }
