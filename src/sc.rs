@@ -273,13 +273,11 @@ impl ServiceManager for ScServiceManager {
                 // 1060 = The specified service does not exist as an installed service.
                 return Ok(crate::ServiceStatus::NotInstalled);
             }
-            return Err(io::Error::other(
-                format!(
-                    "Command failed with exit code {}: {}",
-                    output.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            ));
+            return Err(io::Error::other(format!(
+                "Command failed with exit code {}: {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);

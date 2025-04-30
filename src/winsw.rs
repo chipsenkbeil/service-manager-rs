@@ -140,20 +140,12 @@ impl WinSwServiceManager {
                 encoding: Some("UTF-8"),
                 standalone: None,
             })
-            .map_err(|e| {
-                io::Error::other(
-                    format!("Writing service config failed: {}", e),
-                )
-            })?;
+            .map_err(|e| io::Error::other(format!("Writing service config failed: {}", e)))?;
 
         // <service>
         writer
             .write(XmlEvent::start_element("service"))
-            .map_err(|e| {
-                io::Error::other(
-                    format!("Writing service config failed: {}", e),
-                )
-            })?;
+            .map_err(|e| io::Error::other(format!("Writing service config failed: {}", e)))?;
 
         // Mandatory values
         Self::write_element(&mut writer, "id", &ctx.label.to_qualified_name())?;
@@ -266,11 +258,9 @@ impl WinSwServiceManager {
         }
 
         // </service>
-        writer.write(XmlEvent::end_element()).map_err(|e| {
-            io::Error::other(
-                format!("Writing service config failed: {}", e),
-            )
-        })?;
+        writer
+            .write(XmlEvent::end_element())
+            .map_err(|e| io::Error::other(format!("Writing service config failed: {}", e)))?;
 
         Ok(())
     }
@@ -280,21 +270,18 @@ impl WinSwServiceManager {
         name: &str,
         value: &str,
     ) -> io::Result<()> {
-        writer.write(XmlEvent::start_element(name)).map_err(|e| {
-            io::Error::other(
-                format!("Failed to write element '{}': {}", name, e),
-            )
-        })?;
+        writer
+            .write(XmlEvent::start_element(name))
+            .map_err(|e| io::Error::other(format!("Failed to write element '{}': {}", name, e)))?;
         writer.write(XmlEvent::characters(value)).map_err(|e| {
-            io::Error::other(
-                format!("Failed to write value for element '{}': {}", name, e),
-            )
+            io::Error::other(format!(
+                "Failed to write value for element '{}': {}",
+                name, e
+            ))
         })?;
-        writer.write(XmlEvent::end_element()).map_err(|e| {
-            io::Error::other(
-                format!("Failed to end element '{}': {}", name, e),
-            )
-        })?;
+        writer
+            .write(XmlEvent::end_element())
+            .map_err(|e| io::Error::other(format!("Failed to end element '{}': {}", name, e)))?;
         Ok(())
     }
 
@@ -309,24 +296,24 @@ impl WinSwServiceManager {
             start_element = start_element.attr(attr_name, attr_value);
         }
         writer.write(start_element).map_err(|e| {
-            io::Error::other(
-                format!("Failed to write value for element '{}': {}", name, e),
-            )
+            io::Error::other(format!(
+                "Failed to write value for element '{}': {}",
+                name, e
+            ))
         })?;
 
         if let Some(val) = value {
             writer.write(XmlEvent::characters(val)).map_err(|e| {
-                io::Error::other(
-                    format!("Failed to write value for element '{}': {}", name, e),
-                )
+                io::Error::other(format!(
+                    "Failed to write value for element '{}': {}",
+                    name, e
+                ))
             })?;
         }
 
-        writer.write(XmlEvent::end_element()).map_err(|e| {
-            io::Error::other(
-                format!("Failed to end element '{}': {}", name, e),
-            )
-        })?;
+        writer
+            .write(XmlEvent::end_element())
+            .map_err(|e| io::Error::other(format!("Failed to end element '{}': {}", name, e)))?;
 
         Ok(())
     }
@@ -448,9 +435,10 @@ impl ServiceManager for WinSwServiceManager {
             if stdout.contains("Active") {
                 return Ok(ServiceStatus::Running);
             }
-            return Err(io::Error::other(
-                format!("Failed to get service status: {}", stderr),
-            ));
+            return Err(io::Error::other(format!(
+                "Failed to get service status: {}",
+                stderr
+            )));
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.contains("NonExistent") {

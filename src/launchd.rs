@@ -121,7 +121,7 @@ impl ServiceManager for LaunchdServiceManager {
                 ctx.working_directory.clone(),
                 ctx.environment.clone(),
                 ctx.autostart,
-                ctx.disable_restart_on_failure
+                ctx.disable_restart_on_failure,
             ),
         };
 
@@ -208,22 +208,18 @@ impl ServiceManager for LaunchdServiceManager {
                         }
                     } else {
                         // We have access to the full service label, so it impossible to get the failed status, or it must be input error.
-                        return Err(io::Error::other(
-                            format!(
-                                "Command failed with exit code {}: {}",
-                                output.status.code().unwrap_or(-1),
-                                out
-                            ),
-                        ));
-                    }
-                } else {
-                    return Err(io::Error::other(
-                        format!(
+                        return Err(io::Error::other(format!(
                             "Command failed with exit code {}: {}",
                             output.status.code().unwrap_or(-1),
-                            String::from_utf8_lossy(&output.stderr)
-                        ),
-                    ));
+                            out
+                        )));
+                    }
+                } else {
+                    return Err(io::Error::other(format!(
+                        "Command failed with exit code {}: {}",
+                        output.status.code().unwrap_or(-1),
+                        String::from_utf8_lossy(&output.stderr)
+                    )));
                 }
             }
             out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());

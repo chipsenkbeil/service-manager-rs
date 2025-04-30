@@ -84,11 +84,7 @@ impl ServiceManager for OpenRcServiceManager {
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
         // If the script is configured to run at boot, remove it
-        let _ = rc_update(
-            "del",
-            &ctx.label.to_script_name(),
-            [OsStr::new("default")],
-        );
+        let _ = rc_update("del", &ctx.label.to_script_name(), [OsStr::new("default")]);
 
         // Uninstall service by removing the script
         std::fs::remove_file(service_dir_path().join(ctx.label.to_script_name()))
@@ -129,24 +125,20 @@ impl ServiceManager for OpenRcServiceManager {
                 if stdio.contains("does not exist") {
                     Ok(crate::ServiceStatus::NotInstalled)
                 } else {
-                    Err(io::Error::other(
-                        format!(
-                            "Failed to get status of service {}: {}",
-                            ctx.label.to_script_name(),
-                            stdio
-                        ),
-                    ))
+                    Err(io::Error::other(format!(
+                        "Failed to get status of service {}: {}",
+                        ctx.label.to_script_name(),
+                        stdio
+                    )))
                 }
             }
             Some(0) => Ok(crate::ServiceStatus::Running),
             Some(3) => Ok(crate::ServiceStatus::Stopped(None)),
-            _ => Err(io::Error::other(
-                format!(
-                    "Failed to get status of service {}: {}",
-                    ctx.label.to_script_name(),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            )),
+            _ => Err(io::Error::other(format!(
+                "Failed to get status of service {}: {}",
+                ctx.label.to_script_name(),
+                String::from_utf8_lossy(&output.stderr)
+            ))),
         }
     }
 }
