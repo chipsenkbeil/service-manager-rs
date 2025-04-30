@@ -29,10 +29,10 @@ pub enum ServiceManagerKind {
 
 impl ServiceManagerKind {
     /// Looks up the kind of service management platform native to the operating system
-    pub fn native() -> io::Result<ServiceManagerKind> {
+    pub fn native() -> io::Result<Self> {
         cfg_if! {
             if #[cfg(target_os = "macos")] {
-                Ok(ServiceManagerKind::Launchd)
+                Ok(Self::Launchd)
             } else if #[cfg(target_os = "windows")] {
                 use super::{ServiceManager, TypedServiceManager};
 

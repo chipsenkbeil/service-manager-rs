@@ -181,7 +181,7 @@ impl ServiceManager for ScServiceManager {
         match which::which(SC_EXE) {
             Ok(_) => Ok(true),
             Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -273,19 +273,16 @@ impl ServiceManager for ScServiceManager {
                 // 1060 = The specified service does not exist as an installed service.
                 return Ok(crate::ServiceStatus::NotInstalled);
             }
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "Command failed with exit code {}: {}",
-                    output.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            ));
+            return Err(io::Error::other(format!(
+                "Command failed with exit code {}: {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let line = stdout.split('\n').find(|line| {
-            line.trim_matches(&['\r', ' '])
+            line.trim_matches(['\r', ' '])
                 .to_lowercase()
                 .starts_with("state")
         });

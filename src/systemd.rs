@@ -121,7 +121,7 @@ impl ServiceManager for SystemdServiceManager {
         match which::which(SYSTEMCTL) {
             Ok(_) => Ok(true),
             Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -144,7 +144,7 @@ impl ServiceManager for SystemdServiceManager {
                 &ctx,
                 self.user,
                 ctx.autostart,
-                ctx.disable_restart_on_failure
+                ctx.disable_restart_on_failure,
             ),
         };
 
@@ -216,14 +216,11 @@ impl ServiceManager for SystemdServiceManager {
             Some(4) => Ok(crate::ServiceStatus::NotInstalled),
             Some(3) => Ok(crate::ServiceStatus::Stopped(None)),
             Some(0) => Ok(crate::ServiceStatus::Running),
-            _ => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "Command failed with exit code {}: {}",
-                    output.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            )),
+            _ => Err(io::Error::other(format!(
+                "Command failed with exit code {}: {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            ))),
         }
     }
 }
@@ -261,7 +258,7 @@ fn make_service(
     ctx: &ServiceInstallCtx,
     user: bool,
     autostart: bool,
-    disable_restart_on_failure: bool
+    disable_restart_on_failure: bool,
 ) -> String {
     use std::fmt::Write as _;
     let SystemdInstallConfig {

@@ -112,7 +112,7 @@ impl ServiceManager for RcdServiceManager {
             _ => {
                 let code = status.code().unwrap_or(-1);
                 let msg = format!("Failed to get status of {service}, exit code: {code}");
-                Err(io::Error::new(io::ErrorKind::Other, msg))
+                Err(io::Error::other(msg))
             }
         }
     }
@@ -144,7 +144,7 @@ fn rc_d_script(cmd: &str, service: &str, wrap: bool) -> io::Result<ExitStatus> {
             Ok(status)
         } else {
             let msg = format!("Failed to {cmd} {service}");
-            Err(io::Error::new(io::ErrorKind::Other, msg))
+            Err(io::Error::other(msg))
         }
     } else {
         Ok(status)
