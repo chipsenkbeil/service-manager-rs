@@ -144,7 +144,8 @@ impl ServiceManager for SystemdServiceManager {
                 &ctx,
                 self.user,
                 ctx.autostart,
-                ctx.disable_restart_on_failure
+                ctx.disable_restart_on_failure,
+                ctx.requires_network,
             ),
         };
 
@@ -261,7 +262,8 @@ fn make_service(
     ctx: &ServiceInstallCtx,
     user: bool,
     autostart: bool,
-    disable_restart_on_failure: bool
+    disable_restart_on_failure: bool,
+    requires_network: bool,
 ) -> String {
     use std::fmt::Write as _;
     let SystemdInstallConfig {
@@ -274,6 +276,11 @@ fn make_service(
     let mut service = String::new();
     let _ = writeln!(service, "[Unit]");
     let _ = writeln!(service, "Description={description}");
+
+    if requires_network {
+        let _ = writeln!(service, "After=network-online.target");
+        let _ = writeln!(service, "Wants=network-online.target");
+    }
 
     if let Some(x) = start_limit_interval_sec {
         let _ = writeln!(service, "StartLimitIntervalSec={x}");
