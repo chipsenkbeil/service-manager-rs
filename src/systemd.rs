@@ -278,8 +278,10 @@ fn make_service(
     let _ = writeln!(service, "Description={description}");
 
     if requires_network {
+        // delay the start of this service until after networking has been started
         let _ = writeln!(service, "After=network-online.target");
-        let _ = writeln!(service, "Wants=network-online.target");
+        // this service requires that networking be up and online before it is started
+        let _ = writeln!(service, "Requires=network-online.target");
     }
 
     if let Some(x) = start_limit_interval_sec {
