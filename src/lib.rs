@@ -249,6 +249,9 @@ pub struct ServiceInstallCtx {
     ///
     /// This could overwrite the platform specific service manager config.
     pub disable_restart_on_failure: bool,
+
+    /// Specify whether the service requires network to be up and running in order to run
+    pub requires_network: bool,
 }
 
 impl ServiceInstallCtx {

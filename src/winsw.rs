@@ -625,6 +625,7 @@ mod tests {
             environment: None,
             autostart: true,
             disable_restart_on_failure: false,
+            requires_network: false,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -673,6 +674,7 @@ mod tests {
             environment: None,
             autostart: false,
             disable_restart_on_failure: false,
+            requires_network: false,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -721,6 +723,7 @@ mod tests {
             environment: None,
             autostart: false,
             disable_restart_on_failure: false,
+            requires_network: false,
         };
 
         let mut config = WinSwConfig::default();
@@ -774,6 +777,7 @@ mod tests {
             ]),
             autostart: true,
             disable_restart_on_failure: false,
+            requires_network: false,
         };
 
         let config = WinSwConfig {
@@ -904,6 +908,7 @@ mod tests {
             environment: None,
             autostart: true,
             disable_restart_on_failure: false,
+            requires_network: false,
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -948,6 +953,7 @@ mod tests {
             environment: None,
             autostart: true,
             disable_restart_on_failure: false,
+            requires_network: false,
         };
 
         let result = WinSwServiceManager::write_service_configuration(
