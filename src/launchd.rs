@@ -1,8 +1,8 @@
 use crate::utils::wrap_output;
 
 use super::{
-    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
-    ServiceUninstallCtx,
+    utils, RestartPolicy, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx,
+    ServiceStopCtx, ServiceUninstallCtx,
 };
 use plist::{Dictionary, Value};
 use std::{
@@ -25,13 +25,14 @@ pub struct LaunchdConfig {
 /// Configuration settings tied to launchd services during installation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LaunchdInstallConfig {
-    /// If true, will include `KeepAlive` flag set to true
-    pub keep_alive: bool,
+    /// Launchd-specific keep-alive setting. If `Some`, this takes precedence over the generic
+    /// `RestartPolicy` in `ServiceInstallCtx`. If `None`, the generic policy is used.
+    pub keep_alive: Option<bool>,
 }
 
 impl Default for LaunchdInstallConfig {
     fn default() -> Self {
-        Self { keep_alive: true }
+        Self { keep_alive: None }
     }
 }
 
@@ -121,7 +122,7 @@ impl ServiceManager for LaunchdServiceManager {
                 ctx.working_directory.clone(),
                 ctx.environment.clone(),
                 ctx.autostart,
-                ctx.disable_restart_on_failure
+                ctx.restart_policy,
             ),
         };
 
@@ -276,7 +277,7 @@ fn make_plist<'a>(
     working_directory: Option<PathBuf>,
     environment: Option<Vec<(String, String)>>,
     autostart: bool,
-    disable_restart_on_failure: bool,
+    restart_policy: RestartPolicy,
 ) -> String {
     let mut dict = Dictionary::new();
 
@@ -290,8 +291,63 @@ fn make_plist<'a>(
         Value::Array(program_arguments),
     );
 
-    if !disable_restart_on_failure {
-        dict.insert("KeepAlive".to_string(), Value::Boolean(config.keep_alive));
+    // Handle restart configuration
+    // Priority: launchd-specific config > generic RestartPolicy
+    if let Some(keep_alive) = config.keep_alive {
+        // Use launchd-specific keep_alive configuration
+        if keep_alive {
+            dict.insert("KeepAlive".to_string(), Value::Boolean(true));
+        }
+    } else {
+        // Fall back to generic RestartPolicy
+        // Convert generic `RestartPolicy` to Launchd `KeepAlive`.
+        //
+        // Right now we are only supporting binary restart for Launchd, with `KeepAlive` either set or
+        // not.
+        //
+        // However, Launchd does support further options when `KeepAlive` is set, e.g.,
+        // `SuccessfulExit`. These could be extensions for the future.
+        match restart_policy {
+            RestartPolicy::Never => {
+                // Don't set KeepAlive
+            }
+            RestartPolicy::Always { delay_secs } => {
+                dict.insert("KeepAlive".to_string(), Value::Boolean(true));
+                if delay_secs.is_some() {
+                    log::warn!(
+                        "Launchd does not support restart delays; delay_secs will be ignored for service '{}'",
+                        label
+                    );
+                }
+            }
+            RestartPolicy::OnFailure { delay_secs } => {
+                dict.insert("KeepAlive".to_string(), Value::Boolean(true));
+                log::warn!(
+                    "Right now we don't have more granular restart support for Launchd so the service will always restart; using KeepAlive=true for service '{}'",
+                    label
+                );
+                if delay_secs.is_some() {
+                    log::warn!(
+                        "Launchd does not support restart delays; delay_secs will be ignored for service '{}'",
+                        label
+                    );
+                }
+            }
+            RestartPolicy::OnSuccess { delay_secs } => {
+                // Create KeepAlive dictionary with SuccessfulExit=false
+                // This means: restart when exit is successful (exit code 0)
+                let mut keep_alive_dict = Dictionary::new();
+                keep_alive_dict.insert("SuccessfulExit".to_string(), Value::Boolean(false));
+                dict.insert("KeepAlive".to_string(), Value::Dictionary(keep_alive_dict));
+
+                if delay_secs.is_some() {
+                    log::warn!(
+                        "Launchd does not support restart delays; delay_secs will be ignored for service '{}'",
+                        label
+                    );
+                }
+            }
+        }
     }
 
     if let Some(username) = username {

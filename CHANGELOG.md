@@ -5,7 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0] - 2025-11-22
+
+### Changed
+
+- **BREAKING CHANGE**: Replaced `disable_restart_on_failure: bool` field with `restart_policy: RestartPolicy` in `ServiceInstallCtx`.
+  - The new `RestartPolicy` enum provides a cross-platform abstraction for service-restart behavior with four variants:
+    - `RestartPolicy::Never` - Service never restarts
+    - `RestartPolicy::Always { delay_secs: Option<u32> }` - Service always restarts regardless of exit status
+    - `RestartPolicy::OnFailure { delay_secs: Option<u32> }` - Service restarts only on non-zero exit (default)
+    - `RestartPolicy::OnSuccess { delay_secs: Option<u32> }` - Service restarts only on successful exit (exit code 0)
+  - Different platforms support different levels of granularity:
+    - **systemd** (Linux): Supports all restart policies natively (including `OnSuccess` via `Restart=on-success`)
+    - **launchd** (macOS): Supports Never, Always, and OnSuccess; OnFailure is approximated using `KeepAlive=true`; OnSuccess uses `KeepAlive` dictionary with `SuccessfulExit=false`
+    - **WinSW** (Windows): Supports Never, Always, and OnFailure with optional delays; OnSuccess falls back to Always with a warning
+    - **OpenRC/rc.d/sc.exe**: Limited or no restart support; logs warnings for unsupported policies
+  - Migration guide for `ServiceInstallCtx`:
+    - `disable_restart_on_failure: false` → `restart_policy: RestartPolicy::OnFailure { delay_secs: None }`
+    - `disable_restart_on_failure: true` → `restart_policy: RestartPolicy::Never`
+
+- **BREAKING CHANGE**: Platform-specific restart configuration fields are now `Option` types,
+  allowing the generic `RestartPolicy` to be used by default while still supporting platform-specific
+  features when needed:
+  - `SystemdInstallConfig.restart`: Changed from `SystemdServiceRestartType` to `Option<SystemdServiceRestartType>`
+    - When `Some`, the systemd-specific restart type takes precedence over the generic `RestartPolicy`
+    - When `None` (default), falls back to the generic `RestartPolicy`
+    - Migration: `restart: SystemdServiceRestartType::OnFailure` → 
+      `restart: Some(SystemdServiceRestartType::OnFailure)` or `restart: None` to use generic policy
+  - `LaunchdInstallConfig.keep_alive`: Changed from `bool` to `Option<bool>`
+    - When `Some`, the launchd-specific keep-alive setting takes precedence
+    - When `None` (default), falls back to the generic `RestartPolicy`
+    - Migration: `keep_alive: true` → `keep_alive: Some(true)` or `keep_alive: None` to use generic policy
+  - `WinSwInstallConfig.failure_action`: Changed from `WinSwOnFailureAction` to `Option<WinSwOnFailureAction>`
+    - When `Some`, the WinSW-specific failure action takes precedence
+    - When `None` (default), falls back to the generic `RestartPolicy`
+    - Migration: `failure_action: WinSwOnFailureAction::Restart(...)` →
+      `failure_action: Some(WinSwOnFailureAction::Restart(...))` or `failure_action: None` to use generic policy
+
+### Added
+
+- Support for the `log` crate to emit warnings when platform-specific restart features are not supported
 
 ## [0.8.0] - 2025-02-21
 

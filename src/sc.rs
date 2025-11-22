@@ -1,8 +1,8 @@
 use crate::utils::wrap_output;
 
 use super::{
-    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
-    ServiceUninstallCtx,
+    RestartPolicy, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx,
+    ServiceStopCtx, ServiceUninstallCtx,
 };
 use std::{
     borrow::Cow,
@@ -186,6 +186,20 @@ impl ServiceManager for ScServiceManager {
     }
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
+        // sc.exe doesn't support restart policies through `sc create`.
+        // Log a warning if user requested anything other than `Never`.
+        match ctx.restart_policy {
+            RestartPolicy::Never => {
+                // This is fine, sc.exe services don't restart by default
+            }
+            RestartPolicy::Always { .. } | RestartPolicy::OnFailure { .. } | RestartPolicy::OnSuccess { .. } => {
+                log::warn!(
+                    "sc.exe does not support automatic restart policies through 'sc create'; service '{}' will not restart automatically. Use 'sc failure' to configure restart behavior manually.",
+                    ctx.label.to_qualified_name()
+                );
+            }
+        }
+
         let service_name = ctx.label.to_qualified_name();
 
         let service_type = OsString::from(self.config.install.service_type.to_string());

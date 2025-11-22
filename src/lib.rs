@@ -111,6 +111,62 @@ pub enum ServiceLevel {
     User,
 }
 
+/// Represents the restart policy for a service.
+///
+/// This enum provides a cross-platform abstraction for service restart behavior with a set of
+/// simple options that cover most service managers.
+///
+/// For most service cases you likely want a restart-on-failure policy, so this is the default.
+///
+/// Each service manager supports different levels of granularity:
+///
+/// - **Systemd** (Linux): supports all variants natively
+/// - **Launchd** (macOS): supports Never, Always, OnFailure (approximated), and OnSuccess via KeepAlive dictionary
+/// - **WinSW** (Windows): supports Never, Always, and OnFailure; OnSuccess falls back to Always with a warning
+/// - **OpenRC/rc.d/sc.exe**: limited or no restart support as of yet
+///
+/// When a platform doesn't support a specific policy, the implementation will fall back
+/// to the closest approximation and log a warning.
+///
+/// In the case where you need a restart policy that is very specific to a particular service
+/// manager, you should instantiate that service manager directly, rather than using the generic
+/// `ServiceManager` trait.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum RestartPolicy {
+    /// Never restart the service
+    Never,
+
+    /// Always restart the service regardless of exit status.
+    ///
+    /// The optional delay specifies seconds to wait before restarting.
+    Always {
+        /// Delay in seconds before restarting
+        delay_secs: Option<u32>,
+    },
+
+    /// Restart the service only when it exits with a non-zero status.
+    ///
+    /// The optional delay specifies seconds to wait before restarting.
+    OnFailure {
+        /// Delay in seconds before restarting
+        delay_secs: Option<u32>,
+    },
+
+    /// Restart the service only when it exits with a zero status (success).
+    ///
+    /// The optional delay specifies seconds to wait before restarting.
+    OnSuccess {
+        /// Delay in seconds before restarting
+        delay_secs: Option<u32>,
+    },
+}
+
+impl Default for RestartPolicy {
+    fn default() -> Self {
+        RestartPolicy::OnFailure { delay_secs: None }
+    }
+}
+
 /// Represents the status of a service
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ServiceStatus {
@@ -245,10 +301,14 @@ pub struct ServiceInstallCtx {
     /// Specify whether the service should automatically start on reboot
     pub autostart: bool,
 
-    /// Optionally disable a service from restarting when it exits with a failure
+    /// Specify the restart policy for the service
     ///
-    /// This could overwrite the platform specific service manager config.
-    pub disable_restart_on_failure: bool,
+    /// This controls when and how the service should be restarted if it exits.
+    /// Different platforms support different levels of granularity - see [`RestartPolicy`]
+    /// documentation for details.
+    ///
+    /// Defaults to [`RestartPolicy::OnFailure`] if not specified.
+    pub restart_policy: RestartPolicy,
 }
 
 impl ServiceInstallCtx {

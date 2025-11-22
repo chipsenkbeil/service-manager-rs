@@ -69,7 +69,7 @@ manager.install(ServiceInstallCtx {
     working_directory: None, // Optional String for the working directory for the service process.
     environment: None, // Optional list of environment variables to supply the service process.
     autostart: true, // Specify whether the service should automatically start upon OS reboot.
-    disable_restart_on_failure: false, // Services restart on crash by default.
+    restart_policy: RestartPolicy::default(), // Restart on failure by default.
 }).expect("Failed to install");
 
 // Start our service using the underlying service management platform
@@ -133,7 +133,7 @@ let mut manager = LaunchdServiceManager::system();
 
 // Update an install configuration property where installing a service
 // will NOT add the KeepAlive flag
-manager.config.install.keep_alive = false;
+manager.config.install.keep_alive = Some(false);
 
 // Install our service using the explicit service manager
 manager.install(ServiceInstallCtx {
@@ -145,9 +145,74 @@ manager.install(ServiceInstallCtx {
     working_directory: None, // Optional String for the working directory for the service process.
     environment: None, // Optional list of environment variables to supply the service process.
     autostart: true, // Specify whether the service should automatically start upon OS reboot.
-    disable_restart_on_failure: false, // Services restart on crash by default.
+    restart_policy: RestartPolicy::default(), // Restart on failure by default.
 }).expect("Failed to install");
 ```
+
+### Configuring restart policies
+
+The crate provides a cross-platform `RestartPolicy` enum that allows you to control
+when and how services should be restarted. Different platforms support different levels
+of granularity, and the implementation will use the closest approximation when an exact
+match isn't available.
+
+If you need options specific to any given service manager, you should use that specific
+service manager rather than the generic `ServiceManager` crate.
+
+```rust,no_run
+use service_manager::*;
+use std::ffi::OsString;
+use std::path::PathBuf;
+
+let label: ServiceLabel = "com.example.my-service".parse().unwrap();
+let manager = <dyn ServiceManager>::native()
+    .expect("Failed to detect management platform");
+
+// Example 1: Never restart the service
+manager.install(ServiceInstallCtx {
+    label: label.clone(),
+    program: PathBuf::from("path/to/my-service-executable"),
+    args: vec![OsString::from("--some-arg")],
+    contents: None,
+    username: None,
+    working_directory: None,
+    environment: None,
+    autostart: true,
+    restart_policy: RestartPolicy::Never,
+}).expect("Failed to install");
+
+// Example 2: Always restart regardless of exit status
+manager.install(ServiceInstallCtx {
+    label: label.clone(),
+    program: PathBuf::from("path/to/my-service-executable"),
+    args: vec![OsString::from("--some-arg")],
+    contents: None,
+    username: None,
+    working_directory: None,
+    environment: None,
+    autostart: true,
+    restart_policy: RestartPolicy::Always { delay_secs: Some(10) },
+}).expect("Failed to install");
+
+// Example 3: Restart only on failure (non-zero exit)
+manager.install(ServiceInstallCtx {
+    label: label.clone(),
+    program: PathBuf::from("path/to/my-service-executable"),
+    args: vec![OsString::from("--some-arg")],
+    contents: None,
+    username: None,
+    working_directory: None,
+    environment: None,
+    autostart: true,
+    restart_policy: RestartPolicy::OnFailure { delay_secs: Some(5) },
+}).expect("Failed to install");
+```
+
+**Platform support:**
+- **systemd (Linux)**: Supports all restart policies natively
+- **launchd (macOS)**: Only supports Never vs Always/OnFailure (uses KeepAlive boolean)
+- **WinSW (Windows)**: Supports all restart policies
+- **OpenRC/rc.d/sc.exe**: Limited or no restart support; warnings logged for unsupported policies
 
 ### Running tests
 

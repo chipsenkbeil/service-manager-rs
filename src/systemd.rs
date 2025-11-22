@@ -1,8 +1,8 @@
 use crate::utils::wrap_output;
 
 use super::{
-    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
-    ServiceUninstallCtx,
+    utils, RestartPolicy, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx,
+    ServiceStopCtx, ServiceUninstallCtx,
 };
 use std::{
     fmt, io,
@@ -24,7 +24,9 @@ pub struct SystemdConfig {
 pub struct SystemdInstallConfig {
     pub start_limit_interval_sec: Option<u32>,
     pub start_limit_burst: Option<u32>,
-    pub restart: SystemdServiceRestartType,
+    /// Systemd-specific restart policy. If `Some`, this takes precedence over the generic
+    /// `RestartPolicy` in `ServiceInstallCtx`. If `None`, the generic policy is used.
+    pub restart: Option<SystemdServiceRestartType>,
     pub restart_sec: Option<u32>,
 }
 
@@ -33,7 +35,7 @@ impl Default for SystemdInstallConfig {
         Self {
             start_limit_interval_sec: None,
             start_limit_burst: None,
-            restart: SystemdServiceRestartType::OnFailure,
+            restart: None,
             restart_sec: None,
         }
     }
@@ -144,7 +146,6 @@ impl ServiceManager for SystemdServiceManager {
                 &ctx,
                 self.user,
                 ctx.autostart,
-                ctx.disable_restart_on_failure
             ),
         };
 
@@ -261,14 +262,13 @@ fn make_service(
     ctx: &ServiceInstallCtx,
     user: bool,
     autostart: bool,
-    disable_restart_on_failure: bool
 ) -> String {
     use std::fmt::Write as _;
     let SystemdInstallConfig {
         start_limit_interval_sec,
         start_limit_burst,
-        restart,
-        restart_sec,
+        restart: specific_restart_policy,
+        restart_sec: specific_restart_sec,
     } = config;
 
     let mut service = String::new();
@@ -308,13 +308,38 @@ fn make_service(
         .join(" ");
     let _ = writeln!(service, "ExecStart={program} {args}");
 
-    if !disable_restart_on_failure {
-        if *restart != SystemdServiceRestartType::No {
-            let _ = writeln!(service, "Restart={restart}");
+    // Handle restart configuration.
+    // Specific policy takes precedence over generic.
+    if let Some(restart_type) = specific_restart_policy {
+        if *restart_type != SystemdServiceRestartType::No {
+            let _ = writeln!(service, "Restart={restart_type}");
         }
-
-        if let Some(x) = restart_sec {
-            let _ = writeln!(service, "RestartSec={x}");
+        if let Some(delay) = specific_restart_sec {
+            let _ = writeln!(service, "RestartSec={delay}");
+        }
+    } else {
+        match ctx.restart_policy {
+            RestartPolicy::Never => {
+                // Don't write Restart= or RestartSec=
+            }
+            RestartPolicy::Always { delay_secs } => {
+                let _ = writeln!(service, "Restart=always");
+                if let Some(delay) = delay_secs {
+                    let _ = writeln!(service, "RestartSec={delay}");
+                }
+            }
+            RestartPolicy::OnFailure { delay_secs } => {
+                let _ = writeln!(service, "Restart=on-failure");
+                if let Some(delay) = delay_secs {
+                    let _ = writeln!(service, "RestartSec={delay}");
+                }
+            }
+            RestartPolicy::OnSuccess { delay_secs } => {
+                let _ = writeln!(service, "Restart=on-success");
+                if let Some(delay) = delay_secs {
+                    let _ = writeln!(service, "RestartSec={delay}");
+                }
+            }
         }
     }
 
