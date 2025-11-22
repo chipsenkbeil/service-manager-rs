@@ -133,7 +133,7 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
             working_directory: None,
             environment: None,
             autostart: false,
-            disable_restart_on_failure: true,
+            restart_policy: RestartPolicy::Never,
         })
         .unwrap();
 

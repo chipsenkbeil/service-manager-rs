@@ -1,8 +1,8 @@
 use crate::utils::wrap_output;
 
 use super::{
-    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
-    ServiceUninstallCtx,
+    utils, RestartPolicy, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx,
+    ServiceStopCtx, ServiceUninstallCtx,
 };
 use std::{
     ffi::{OsStr, OsString},
@@ -50,6 +50,20 @@ impl ServiceManager for OpenRcServiceManager {
     }
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
+        // OpenRC doesn't support restart policies in the basic implementation.
+        // Log a warning if user requested anything other than `Never`.
+        match ctx.restart_policy {
+            RestartPolicy::Never => {
+                // This is fine, OpenRC services don't restart by default
+            }
+            RestartPolicy::Always { .. } | RestartPolicy::OnFailure { .. } | RestartPolicy::OnSuccess { .. } => {
+                log::warn!(
+                    "OpenRC does not support automatic restart policies; service '{}' will not restart automatically",
+                    ctx.label.to_script_name()
+                );
+            }
+        }
+
         let dir_path = service_dir_path();
         std::fs::create_dir_all(&dir_path)?;
 
@@ -84,11 +98,7 @@ impl ServiceManager for OpenRcServiceManager {
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
         // If the script is configured to run at boot, remove it
-        let _ = rc_update(
-            "del",
-            &ctx.label.to_script_name(),
-            [OsStr::new("default")],
-        );
+        let _ = rc_update("del", &ctx.label.to_script_name(), [OsStr::new("default")]);
 
         // Uninstall service by removing the script
         std::fs::remove_file(service_dir_path().join(&ctx.label.to_script_name()))

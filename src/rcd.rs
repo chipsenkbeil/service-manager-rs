@@ -1,6 +1,6 @@
 use super::{
-    utils, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
-    ServiceUninstallCtx,
+    utils, RestartPolicy, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx,
+    ServiceStopCtx, ServiceUninstallCtx,
 };
 use std::{
     ffi::{OsStr, OsString},
@@ -47,6 +47,20 @@ impl ServiceManager for RcdServiceManager {
     }
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
+        // rc.d doesn't support restart policies in the basic implementation.
+        // Log a warning if user requested anything other than `Never`.
+        match ctx.restart_policy {
+            RestartPolicy::Never => {
+                // This is fine, rc.d services don't restart by default
+            }
+            RestartPolicy::Always { .. } | RestartPolicy::OnFailure { .. } | RestartPolicy::OnSuccess { .. } => {
+                log::warn!(
+                    "rc.d does not support automatic restart policies; service '{}' will not restart automatically",
+                    ctx.label.to_script_name()
+                );
+            }
+        }
+
         let service = ctx.label.to_script_name();
         let script = match ctx.contents {
             Some(contents) => contents,

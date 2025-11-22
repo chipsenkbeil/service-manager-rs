@@ -2,8 +2,8 @@ use crate::utils::wrap_output;
 use crate::ServiceStatus;
 
 use super::{
-    ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
-    ServiceUninstallCtx,
+    RestartPolicy, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx,
+    ServiceStopCtx, ServiceUninstallCtx,
 };
 use std::ffi::OsString;
 use std::fs::File;
@@ -39,7 +39,9 @@ impl Default for WinSwConfig {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WinSwInstallConfig {
-    pub failure_action: WinSwOnFailureAction,
+    /// WinSW-specific failure action. If `Some`, this takes precedence over the generic
+    /// `RestartPolicy` in `ServiceInstallCtx`. If `None`, the generic policy is used.
+    pub failure_action: Option<WinSwOnFailureAction>,
     pub reset_failure_time: Option<String>,
     pub security_descriptor: Option<String>,
 }
@@ -193,14 +195,37 @@ impl WinSwServiceManager {
             }
         }
 
-        // Optional install elements
-        let (action, delay) = if ctx.disable_restart_on_failure {
-            ("none", None)
-        } else {
-            match &config.install.failure_action {
+        // Handle restart configuration
+        // Priority: WinSW-specific config > generic RestartPolicy
+        let delay_str_always;
+        let delay_str_failure;
+        let (action, delay) = if let Some(failure_action) = &config.install.failure_action {
+            // Use WinSW-specific failure action configuration
+            match failure_action {
                 WinSwOnFailureAction::Restart(delay) => ("restart", delay.as_deref()),
                 WinSwOnFailureAction::Reboot => ("reboot", None),
                 WinSwOnFailureAction::None => ("none", None),
+            }
+        } else {
+            // Fall back to generic RestartPolicy
+            match ctx.restart_policy {
+                RestartPolicy::Never => ("none", None),
+                RestartPolicy::Always { delay_secs } => {
+                    delay_str_always = delay_secs.map(|secs| format!("{} sec", secs));
+                    ("restart", delay_str_always.as_deref())
+                }
+                RestartPolicy::OnFailure { delay_secs } => {
+                    delay_str_failure = delay_secs.map(|secs| format!("{} sec", secs));
+                    ("restart", delay_str_failure.as_deref())
+                }
+                RestartPolicy::OnSuccess { delay_secs } => {
+                    log::warn!(
+                        "WinSW does not support restart on success; falling back to 'always' for service '{}'",
+                        ctx.label
+                    );
+                    delay_str_always = delay_secs.map(|secs| format!("{} sec", secs));
+                    ("restart", delay_str_always.as_deref())
+                }
             }
         };
 
@@ -624,7 +649,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: true,
-            disable_restart_on_failure: false,
+            restart_policy: RestartPolicy::default(),
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -672,7 +697,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: false,
-            disable_restart_on_failure: false,
+            restart_policy: RestartPolicy::default(),
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -720,7 +745,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: false,
-            disable_restart_on_failure: false,
+            restart_policy: RestartPolicy::default(),
         };
 
         let mut config = WinSwConfig::default();
@@ -773,12 +798,14 @@ mod tests {
                 ("ENV2".to_string(), "val2".to_string()),
             ]),
             autostart: true,
-            disable_restart_on_failure: false,
+            restart_policy: RestartPolicy::OnFailure {
+                delay_secs: Some(10),
+            },
         };
 
         let config = WinSwConfig {
             install: WinSwInstallConfig {
-                failure_action: WinSwOnFailureAction::Restart(Some("10 sec".to_string())),
+                failure_action: Some(WinSwOnFailureAction::Restart(Some("10 sec".to_string()))),
                 reset_failure_time: Some("1 hour".to_string()),
                 security_descriptor: Some(
                     "O:AOG:DAD:(A;;RPWPCCDCLCSWRCWDWOGA;;;S-1-0-0)".to_string(),
@@ -903,7 +930,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: true,
-            disable_restart_on_failure: false,
+            restart_policy: RestartPolicy::default(),
         };
 
         WinSwServiceManager::write_service_configuration(
@@ -947,7 +974,7 @@ mod tests {
             working_directory: None,
             environment: None,
             autostart: true,
-            disable_restart_on_failure: false,
+            restart_policy: RestartPolicy::default(),
         };
 
         let result = WinSwServiceManager::write_service_configuration(
