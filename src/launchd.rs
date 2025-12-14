@@ -312,6 +312,8 @@ fn make_plist<'a>(
                 // Don't set KeepAlive
             }
             RestartPolicy::Always { delay_secs } => {
+                // KeepAlive *without* the SuccessfulExit construct will keep the service alive
+                // whether the process exits successfully or not.
                 dict.insert("KeepAlive".to_string(), Value::Boolean(true));
                 if delay_secs.is_some() {
                     log::warn!(
@@ -321,11 +323,12 @@ fn make_plist<'a>(
                 }
             }
             RestartPolicy::OnFailure { delay_secs } => {
-                dict.insert("KeepAlive".to_string(), Value::Boolean(true));
-                log::warn!(
-                    "Right now we don't have more granular restart support for Launchd so the service will always restart; using KeepAlive=true for service '{}'",
-                    label
-                );
+                // Create KeepAlive dictionary with SuccessfulExit=false
+                // This means: restart when exit is NOT successful
+                let mut keep_alive_dict = Dictionary::new();
+                keep_alive_dict.insert("SuccessfulExit".to_string(), Value::Boolean(false));
+                dict.insert("KeepAlive".to_string(), Value::Dictionary(keep_alive_dict));
+
                 if delay_secs.is_some() {
                     log::warn!(
                         "Launchd does not support restart delays; delay_secs will be ignored for service '{}'",
@@ -334,10 +337,10 @@ fn make_plist<'a>(
                 }
             }
             RestartPolicy::OnSuccess { delay_secs } => {
-                // Create KeepAlive dictionary with SuccessfulExit=false
-                // This means: restart when exit is successful (exit code 0)
+                // Create KeepAlive dictionary with SuccessfulExit=true
+                // This means: restart when exit is successful
                 let mut keep_alive_dict = Dictionary::new();
-                keep_alive_dict.insert("SuccessfulExit".to_string(), Value::Boolean(false));
+                keep_alive_dict.insert("SuccessfulExit".to_string(), Value::Boolean(true));
                 dict.insert("KeepAlive".to_string(), Value::Dictionary(keep_alive_dict));
 
                 if delay_secs.is_some() {
