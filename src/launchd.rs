@@ -138,7 +138,9 @@ impl ServiceManager for LaunchdServiceManager {
         )?;
 
         // Load the service.
-        // If "KeepAlive" is set to true, the service will immediately start.
+        // Services with KeepAlive configured will have Disabled=true set, preventing auto-start
+        // until explicitly started via start(). This provides cross-platform consistency where
+        // install() never auto-starts services.
         wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
 
         Ok(())
@@ -153,8 +155,49 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
-        // To start services that do not have "KeepAlive" set to true
-        wrap_output(launchctl("start", ctx.label.to_qualified_name().as_str())?)?;
+        let qualified_name = ctx.label.to_qualified_name();
+        let plist_path = self.get_plist_path(qualified_name.clone());
+
+        if !plist_path.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Service {} is not installed", qualified_name),
+            ));
+        }
+
+        let plist_data = std::fs::read(&plist_path)?;
+        let mut plist: Value = plist::from_reader(std::io::Cursor::new(plist_data))
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let is_disabled = if let Value::Dictionary(ref dict) = plist {
+            dict.get("Disabled")
+                .and_then(|v| v.as_boolean())
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        if is_disabled {
+            // Service was disable to prevent automatic start when KeepAlive is used. Now the
+            // disabled key will be removed. This makes the services behave in a more sane way like
+            // service managers on other platforms.
+            if let Value::Dictionary(ref mut dict) = plist {
+                dict.remove("Disabled");
+            }
+
+            let mut buffer = Vec::new();
+            plist
+                .to_writer_xml(&mut buffer)
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            utils::write_file(plist_path.as_path(), &buffer, PLIST_FILE_PERMISSIONS)?;
+
+            let _ = launchctl("unload", plist_path.to_string_lossy().as_ref());
+            wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
+        } else {
+            // Service is not disabled, use regular start command
+            // This works for non-KeepAlive services
+            wrap_output(launchctl("start", qualified_name.as_str())?)?;
+        }
+
         Ok(())
     }
 
@@ -379,6 +422,19 @@ fn make_plist<'a>(
         dict.insert("RunAtLoad".to_string(), Value::Boolean(true));
     } else {
         dict.insert("RunAtLoad".to_string(), Value::Boolean(false));
+    }
+
+    let has_keep_alive = if let Some(keep_alive) = config.keep_alive {
+        keep_alive
+    } else {
+        !matches!(restart_policy, RestartPolicy::Never)
+    };
+
+    // Set Disabled key to prevent the service automatically starting on load when KeepAlive is present.
+    // This provides consistent cross-platform behaviour which is much more intuitive.
+    // The service must be explicitly started via start().
+    if has_keep_alive {
+        dict.insert("Disabled".to_string(), Value::Boolean(true));
     }
 
     let plist = Value::Dictionary(dict);
