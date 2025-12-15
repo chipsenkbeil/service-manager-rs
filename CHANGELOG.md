@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2025-12-14
+
+### Changed
+
+- **BREAKING CHANGE**: Launchd services with restart policies (`RestartPolicy::Always`, `OnFailure`, or `OnSuccess`) no longer auto-start when `install()` is called. Services must now be explicitly started using `start()`. This provides cross-platform consistency where `install()` registers the service definition without starting it, matching the behavior of systemd and other service managers.
+  - Services with `KeepAlive` configured are now installed with `Disabled=true` in the plist
+  - The `start()` function removes the `Disabled` key and reloads the service
+  - The `autostart` parameter continues to control only `RunAtLoad` (whether service starts on OS boot), not initial install behavior
+  - Migration: Add explicit `manager.start(ctx)?` call after `manager.install(ctx)?` if you need the service to start immediately
+
+### Fixed
+
+- Fixed incorrect Launchd restart policy implementation for `RestartPolicy::OnFailure` and `RestartPolicy::OnSuccess`:
+  - `OnFailure` now correctly uses `KeepAlive` dictionary with `SuccessfulExit=false` (restart on non-zero exit) instead of `KeepAlive=true` (always restart)
+  - `OnSuccess` now correctly uses `SuccessfulExit=true` (restart on zero exit) instead of `SuccessfulExit=false`
+
 ## [0.9.0] - 2025-11-22
 
 ### Changed
