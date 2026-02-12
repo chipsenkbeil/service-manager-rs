@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING CHANGE**: Extended `RestartPolicy::OnFailure` with two new fields to
+  prevent infinite restart loops:
+  - `max_retries: Option<u32>` — Maximum number of restart attempts before the
+    service stops. When `None`, the service restarts indefinitely (previous
+    behavior).
+  - `reset_after_secs: Option<u32>` — Duration in seconds after which the failure
+    counter resets. If the service runs successfully for this long, previous
+    failures are forgotten and the retry counter starts fresh. When `None`, the
+    platform default is used.
+  - Migration: Add `max_retries: None, reset_after_secs: None` to existing
+    `RestartPolicy::OnFailure { delay_secs }` constructions to preserve current
+    behavior.
+
+### Added
+
+- **WinSW**: When `max_retries` is set, the WinSW backend generates multiple
+  `<onfailure action="restart"/>` elements (one per retry) followed by
+  `<onfailure action="none"/>` to stop the service after exhausting retries. When
+  `reset_after_secs` is set, a `<resetfailure>` element is generated (unless a
+  WinSW-specific `reset_failure_time` is already configured).
+- Other service managers (systemd, launchd, sc, OpenRC, rc.d) do not yet
+  implement `max_retries` or `reset_after_secs`, but there is potential to extend
+  them in the future (e.g., systemd's `StartLimitBurst` /
+  `StartLimitIntervalSec`).
+- Added a `fail` subcommand to the system test binary for simulating crashing
+  services.
+- Added a Windows system test (`should_stop_winsw_service_after_max_retries`)
+  that verifies a failing WinSW service stops after exhausting its retry limit.
+
 ## [0.10.0] - 2025-12-14
 
 ### Changed
