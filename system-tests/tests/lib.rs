@@ -72,6 +72,12 @@ fn should_support_winsw_for_system_services() {
 }
 
 #[test]
+#[cfg(target_os = "windows")]
+fn should_stop_winsw_service_after_max_retries() {
+    runner::run_failure_restart_test(WinSwServiceManager::system(), 3)
+}
+
+#[test]
 #[cfg(target_os = "linux")]
 fn should_support_systemd_for_system_services() {
     runner::run_test_n(SystemdServiceManager::system(), TEST_ITER_CNT)

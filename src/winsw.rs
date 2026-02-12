@@ -197,43 +197,110 @@ impl WinSwServiceManager {
 
         // Handle restart configuration
         // Priority: WinSW-specific config > generic RestartPolicy
-        let delay_str_always;
-        let delay_str_failure;
-        let (action, delay) = if let Some(failure_action) = &config.install.failure_action {
-            // Use WinSW-specific failure action configuration
-            match failure_action {
+        if let Some(failure_action) = &config.install.failure_action {
+            // Use WinSW-specific failure action configuration (single element)
+            let (action, delay) = match failure_action {
                 WinSwOnFailureAction::Restart(delay) => ("restart", delay.as_deref()),
                 WinSwOnFailureAction::Reboot => ("reboot", None),
                 WinSwOnFailureAction::None => ("none", None),
-            }
+            };
+            let attributes = delay.map_or_else(
+                || vec![("action", action)],
+                |d| vec![("action", action), ("delay", d)],
+            );
+            Self::write_element_with_attributes(&mut writer, "onfailure", &attributes, None)?;
         } else {
             // Fall back to generic RestartPolicy
             match ctx.restart_policy {
-                RestartPolicy::Never => ("none", None),
-                RestartPolicy::Always { delay_secs } => {
-                    delay_str_always = delay_secs.map(|secs| format!("{} sec", secs));
-                    ("restart", delay_str_always.as_deref())
+                RestartPolicy::Never => {
+                    Self::write_element_with_attributes(
+                        &mut writer,
+                        "onfailure",
+                        &[("action", "none")],
+                        None,
+                    )?;
                 }
-                RestartPolicy::OnFailure { delay_secs } => {
-                    delay_str_failure = delay_secs.map(|secs| format!("{} sec", secs));
-                    ("restart", delay_str_failure.as_deref())
+                RestartPolicy::Always { delay_secs } => {
+                    let delay_str = delay_secs.map(|secs| format!("{} sec", secs));
+                    let attributes = delay_str.as_deref().map_or_else(
+                        || vec![("action", "restart")],
+                        |d| vec![("action", "restart"), ("delay", d)],
+                    );
+                    Self::write_element_with_attributes(
+                        &mut writer,
+                        "onfailure",
+                        &attributes,
+                        None,
+                    )?;
+                }
+                RestartPolicy::OnFailure {
+                    delay_secs,
+                    max_retries,
+                    reset_after_secs,
+                } => {
+                    let delay_str = delay_secs.map(|secs| format!("{} sec", secs));
+                    let attributes = delay_str.as_deref().map_or_else(
+                        || vec![("action", "restart")],
+                        |d| vec![("action", "restart"), ("delay", d)],
+                    );
+
+                    if let Some(n) = max_retries {
+                        // Write n restart elements followed by a "none" element to stop
+                        for _ in 0..n {
+                            Self::write_element_with_attributes(
+                                &mut writer,
+                                "onfailure",
+                                &attributes,
+                                None,
+                            )?;
+                        }
+                        Self::write_element_with_attributes(
+                            &mut writer,
+                            "onfailure",
+                            &[("action", "none")],
+                            None,
+                        )?;
+                    } else {
+                        // No retry limit: single restart element (repeats forever)
+                        Self::write_element_with_attributes(
+                            &mut writer,
+                            "onfailure",
+                            &attributes,
+                            None,
+                        )?;
+                    }
+
+                    // Map reset_after_secs to <resetfailure> unless WinSW-specific
+                    // reset_failure_time is already set
+                    if config.install.reset_failure_time.is_none() {
+                        if let Some(secs) = reset_after_secs {
+                            Self::write_element(
+                                &mut writer,
+                                "resetfailure",
+                                &format!("{} sec", secs),
+                            )?;
+                        }
+                    }
                 }
                 RestartPolicy::OnSuccess { delay_secs } => {
                     log::warn!(
                         "WinSW does not support restart on success; falling back to 'always' for service '{}'",
                         ctx.label
                     );
-                    delay_str_always = delay_secs.map(|secs| format!("{} sec", secs));
-                    ("restart", delay_str_always.as_deref())
+                    let delay_str = delay_secs.map(|secs| format!("{} sec", secs));
+                    let attributes = delay_str.as_deref().map_or_else(
+                        || vec![("action", "restart")],
+                        |d| vec![("action", "restart"), ("delay", d)],
+                    );
+                    Self::write_element_with_attributes(
+                        &mut writer,
+                        "onfailure",
+                        &attributes,
+                        None,
+                    )?;
                 }
             }
-        };
-
-        let attributes = delay.map_or_else(
-            || vec![("action", action)],
-            |d| vec![("action", action), ("delay", d)],
-        );
-        Self::write_element_with_attributes(&mut writer, "onfailure", &attributes, None)?;
+        }
 
         if let Some(reset_time) = &config.install.reset_failure_time {
             Self::write_element(&mut writer, "resetfailure", reset_time)?;
@@ -631,6 +698,51 @@ mod tests {
         env_vars
     }
 
+    /// Returns all occurrences of the named element as a vec of attribute maps.
+    fn get_all_elements_attributes(
+        xml: &str,
+        element_name: &str,
+    ) -> Vec<std::collections::HashMap<String, String>> {
+        let cursor = Cursor::new(xml);
+        let parser = EventReader::new(cursor);
+        let mut results = Vec::new();
+
+        for e in parser {
+            match e {
+                Ok(XmlEvent::StartElement {
+                    name, attributes, ..
+                }) if name.local_name == element_name => {
+                    let mut map = std::collections::HashMap::new();
+                    for attr in attributes {
+                        map.insert(attr.name.local_name, attr.value);
+                    }
+                    results.push(map);
+                }
+                Err(e) => panic!("Error while parsing XML: {}", e),
+                _ => {}
+            }
+        }
+
+        results
+    }
+
+    fn element_exists(xml: &str, element_name: &str) -> bool {
+        let cursor = Cursor::new(xml);
+        let parser = EventReader::new(cursor);
+
+        for e in parser {
+            match e {
+                Ok(XmlEvent::StartElement { name, .. }) if name.local_name == element_name => {
+                    return true;
+                }
+                Err(e) => panic!("Error while parsing XML: {}", e),
+                _ => {}
+            }
+        }
+
+        false
+    }
+
     #[test]
     fn test_service_configuration_with_mandatory_elements() {
         let temp_dir = assert_fs::TempDir::new().unwrap();
@@ -800,6 +912,8 @@ mod tests {
             autostart: true,
             restart_policy: RestartPolicy::OnFailure {
                 delay_secs: Some(10),
+                max_retries: None,
+                reset_after_secs: None,
             },
         };
 
@@ -990,5 +1104,286 @@ mod tests {
                 e.to_string()
             ),
         }
+    }
+
+    #[test]
+    fn test_service_configuration_with_max_retries() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let service_config_file = temp_dir.child("service_config.xml");
+
+        let ctx = ServiceInstallCtx {
+            label: "org.example.my_service".parse().unwrap(),
+            program: PathBuf::from("C:\\Program Files\\org.example\\my_service.exe"),
+            args: vec![OsString::from("--arg")],
+            contents: None,
+            username: None,
+            working_directory: None,
+            environment: None,
+            autostart: true,
+            restart_policy: RestartPolicy::OnFailure {
+                delay_secs: Some(10),
+                max_retries: Some(3),
+                reset_after_secs: None,
+            },
+        };
+
+        WinSwServiceManager::write_service_configuration(
+            &service_config_file.to_path_buf(),
+            &ctx,
+            &WinSwConfig::default(),
+        )
+        .unwrap();
+
+        let xml = std::fs::read_to_string(service_config_file.path()).unwrap();
+
+        // Should have 4 onfailure elements: 3 restart + 1 none
+        let onfailure_elements = get_all_elements_attributes(&xml, "onfailure");
+        assert_eq!(4, onfailure_elements.len());
+
+        // First 3 should be restart with delay
+        for elem in &onfailure_elements[..3] {
+            assert_eq!(Some(&"restart".to_string()), elem.get("action"));
+            assert_eq!(Some(&"10 sec".to_string()), elem.get("delay"));
+        }
+
+        // Last should be none
+        assert_eq!(
+            Some(&"none".to_string()),
+            onfailure_elements[3].get("action")
+        );
+        assert!(!onfailure_elements[3].contains_key("delay"));
+
+        // No resetfailure element since reset_after_secs is None
+        assert!(!element_exists(&xml, "resetfailure"));
+    }
+
+    #[test]
+    fn test_service_configuration_with_reset_after_secs() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let service_config_file = temp_dir.child("service_config.xml");
+
+        let ctx = ServiceInstallCtx {
+            label: "org.example.my_service".parse().unwrap(),
+            program: PathBuf::from("C:\\Program Files\\org.example\\my_service.exe"),
+            args: vec![OsString::from("--arg")],
+            contents: None,
+            username: None,
+            working_directory: None,
+            environment: None,
+            autostart: true,
+            restart_policy: RestartPolicy::OnFailure {
+                delay_secs: None,
+                max_retries: None,
+                reset_after_secs: Some(3600),
+            },
+        };
+
+        WinSwServiceManager::write_service_configuration(
+            &service_config_file.to_path_buf(),
+            &ctx,
+            &WinSwConfig::default(),
+        )
+        .unwrap();
+
+        let xml = std::fs::read_to_string(service_config_file.path()).unwrap();
+
+        // Single onfailure element (no max_retries)
+        let onfailure_elements = get_all_elements_attributes(&xml, "onfailure");
+        assert_eq!(1, onfailure_elements.len());
+        assert_eq!(
+            Some(&"restart".to_string()),
+            onfailure_elements[0].get("action")
+        );
+
+        // resetfailure should be set
+        assert_eq!("3600 sec", get_element_value(&xml, "resetfailure"));
+    }
+
+    #[test]
+    fn test_service_configuration_with_max_retries_and_reset_after_secs() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let service_config_file = temp_dir.child("service_config.xml");
+
+        let ctx = ServiceInstallCtx {
+            label: "org.example.my_service".parse().unwrap(),
+            program: PathBuf::from("C:\\Program Files\\org.example\\my_service.exe"),
+            args: vec![OsString::from("--arg")],
+            contents: None,
+            username: None,
+            working_directory: None,
+            environment: None,
+            autostart: true,
+            restart_policy: RestartPolicy::OnFailure {
+                delay_secs: Some(5),
+                max_retries: Some(2),
+                reset_after_secs: Some(1800),
+            },
+        };
+
+        WinSwServiceManager::write_service_configuration(
+            &service_config_file.to_path_buf(),
+            &ctx,
+            &WinSwConfig::default(),
+        )
+        .unwrap();
+
+        let xml = std::fs::read_to_string(service_config_file.path()).unwrap();
+
+        // 3 onfailure elements: 2 restart + 1 none
+        let onfailure_elements = get_all_elements_attributes(&xml, "onfailure");
+        assert_eq!(3, onfailure_elements.len());
+
+        for elem in &onfailure_elements[..2] {
+            assert_eq!(Some(&"restart".to_string()), elem.get("action"));
+            assert_eq!(Some(&"5 sec".to_string()), elem.get("delay"));
+        }
+        assert_eq!(
+            Some(&"none".to_string()),
+            onfailure_elements[2].get("action")
+        );
+
+        // resetfailure should be set
+        assert_eq!("1800 sec", get_element_value(&xml, "resetfailure"));
+    }
+
+    #[test]
+    fn test_service_configuration_with_no_retries_preserves_current_behavior() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let service_config_file = temp_dir.child("service_config.xml");
+
+        let ctx = ServiceInstallCtx {
+            label: "org.example.my_service".parse().unwrap(),
+            program: PathBuf::from("C:\\Program Files\\org.example\\my_service.exe"),
+            args: vec![OsString::from("--arg")],
+            contents: None,
+            username: None,
+            working_directory: None,
+            environment: None,
+            autostart: true,
+            restart_policy: RestartPolicy::OnFailure {
+                delay_secs: Some(10),
+                max_retries: None,
+                reset_after_secs: None,
+            },
+        };
+
+        WinSwServiceManager::write_service_configuration(
+            &service_config_file.to_path_buf(),
+            &ctx,
+            &WinSwConfig::default(),
+        )
+        .unwrap();
+
+        let xml = std::fs::read_to_string(service_config_file.path()).unwrap();
+
+        // Single onfailure element (backwards compatible)
+        let onfailure_elements = get_all_elements_attributes(&xml, "onfailure");
+        assert_eq!(1, onfailure_elements.len());
+        assert_eq!(
+            Some(&"restart".to_string()),
+            onfailure_elements[0].get("action")
+        );
+        assert_eq!(
+            Some(&"10 sec".to_string()),
+            onfailure_elements[0].get("delay")
+        );
+
+        // No resetfailure
+        assert!(!element_exists(&xml, "resetfailure"));
+    }
+
+    #[test]
+    fn test_winsw_specific_config_takes_precedence_over_max_retries() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let service_config_file = temp_dir.child("service_config.xml");
+
+        let ctx = ServiceInstallCtx {
+            label: "org.example.my_service".parse().unwrap(),
+            program: PathBuf::from("C:\\Program Files\\org.example\\my_service.exe"),
+            args: vec![OsString::from("--arg")],
+            contents: None,
+            username: None,
+            working_directory: None,
+            environment: None,
+            autostart: true,
+            restart_policy: RestartPolicy::OnFailure {
+                delay_secs: Some(10),
+                max_retries: Some(5),
+                reset_after_secs: Some(3600),
+            },
+        };
+
+        let config = WinSwConfig {
+            install: WinSwInstallConfig {
+                failure_action: Some(WinSwOnFailureAction::Restart(Some("20 sec".to_string()))),
+                reset_failure_time: None,
+                security_descriptor: None,
+            },
+            ..WinSwConfig::default()
+        };
+
+        WinSwServiceManager::write_service_configuration(
+            &service_config_file.to_path_buf(),
+            &ctx,
+            &config,
+        )
+        .unwrap();
+
+        let xml = std::fs::read_to_string(service_config_file.path()).unwrap();
+
+        // WinSW-specific config should produce single element, ignoring max_retries
+        let onfailure_elements = get_all_elements_attributes(&xml, "onfailure");
+        assert_eq!(1, onfailure_elements.len());
+        assert_eq!(
+            Some(&"restart".to_string()),
+            onfailure_elements[0].get("action")
+        );
+        assert_eq!(
+            Some(&"20 sec".to_string()),
+            onfailure_elements[0].get("delay")
+        );
+    }
+
+    #[test]
+    fn test_winsw_specific_reset_failure_time_takes_precedence() {
+        let temp_dir = assert_fs::TempDir::new().unwrap();
+        let service_config_file = temp_dir.child("service_config.xml");
+
+        let ctx = ServiceInstallCtx {
+            label: "org.example.my_service".parse().unwrap(),
+            program: PathBuf::from("C:\\Program Files\\org.example\\my_service.exe"),
+            args: vec![OsString::from("--arg")],
+            contents: None,
+            username: None,
+            working_directory: None,
+            environment: None,
+            autostart: true,
+            restart_policy: RestartPolicy::OnFailure {
+                delay_secs: None,
+                max_retries: Some(3),
+                reset_after_secs: Some(3600),
+            },
+        };
+
+        let config = WinSwConfig {
+            install: WinSwInstallConfig {
+                failure_action: None,
+                reset_failure_time: Some("2 hours".to_string()),
+                security_descriptor: None,
+            },
+            ..WinSwConfig::default()
+        };
+
+        WinSwServiceManager::write_service_configuration(
+            &service_config_file.to_path_buf(),
+            &ctx,
+            &config,
+        )
+        .unwrap();
+
+        let xml = std::fs::read_to_string(service_config_file.path()).unwrap();
+
+        // WinSW-specific reset_failure_time should be used, not reset_after_secs
+        assert_eq!("2 hours", get_element_value(&xml, "resetfailure"));
     }
 }

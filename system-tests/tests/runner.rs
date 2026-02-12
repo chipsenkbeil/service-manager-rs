@@ -132,7 +132,11 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
             working_directory: None,
             environment: None,
             autostart: false,
-            restart_policy: RestartPolicy::OnFailure { delay_secs: None },
+            restart_policy: RestartPolicy::OnFailure {
+                delay_secs: None,
+                max_retries: None,
+                reset_after_secs: None,
+            },
         })
         .unwrap();
 
@@ -311,4 +315,172 @@ fn is_service_using_the_specified_user(username: &str, service_label: ServiceLab
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn is_service_using_the_specified_user(_username: &str, _service_label: ServiceLabel) -> bool {
     false
+}
+
+/// Tests that a service configured with `max_retries` stops after exhausting all restart attempts.
+///
+/// The test binary is run with the `fail` subcommand which sleeps briefly then exits non-zero.
+/// WinSW should restart it `max_retries` times, then the final `<onfailure action="none"/>`
+/// causes the service to stop.
+///
+/// After the test, the log file is read to verify the expected number of start attempts.
+#[allow(dead_code)]
+pub fn run_failure_restart_test(manager: impl Into<TypedServiceManager>, max_retries: u32) {
+    let manager = manager.into();
+    let service_label: ServiceLabel = "com.example.fail".parse().unwrap();
+
+    let temp_dir = std::env::temp_dir();
+    let bin_path = assert_cmd::cargo::cargo_bin(crate_name!());
+    let temp_bin_path = temp_dir.join(bin_path.file_name().unwrap());
+    if temp_bin_path.exists() {
+        std::fs::remove_file(temp_bin_path.clone()).unwrap();
+    }
+    std::fs::copy(&bin_path, &temp_bin_path).unwrap();
+
+    let log_file_path = temp_dir.join("service-manager-fail-test.log");
+    if log_file_path.exists() {
+        std::fs::remove_file(&log_file_path).unwrap();
+    }
+
+    // Ensure service manager is available
+    eprintln!("Checking if service available");
+    assert!(manager.available().unwrap(), "Service not available");
+
+    // Cleanup previous test if exists
+    eprintln!("Cleanup previous test if exists");
+    if matches!(
+        manager
+            .status(ServiceStatusCtx {
+                label: service_label.clone(),
+            })
+            .unwrap(),
+        ServiceStatus::Stopped(_) | ServiceStatus::Running
+    ) {
+        if matches!(
+            manager
+                .status(ServiceStatusCtx {
+                    label: service_label.clone(),
+                })
+                .unwrap(),
+            ServiceStatus::Running
+        ) {
+            let _ = manager.stop(ServiceStopCtx {
+                label: service_label.clone(),
+            });
+            wait();
+        }
+        manager
+            .uninstall(ServiceUninstallCtx {
+                label: service_label.clone(),
+            })
+            .unwrap();
+        wait();
+    }
+
+    // Install the service with the fail subcommand and max_retries
+    let fail_delay_secs = 2u64;
+    let restart_delay_secs = 2u32;
+    eprintln!(
+        "Installing failing service with max_retries={}, fail_delay={}s, restart_delay={}s",
+        max_retries, fail_delay_secs, restart_delay_secs
+    );
+    manager
+        .install(ServiceInstallCtx {
+            label: service_label.clone(),
+            program: temp_bin_path,
+            args: vec![
+                OsString::from("fail"),
+                OsString::from("--delay"),
+                OsString::from(fail_delay_secs.to_string()),
+                OsString::from("--log-file"),
+                log_file_path.clone().into_os_string(),
+            ],
+            contents: None,
+            username: None,
+            working_directory: None,
+            environment: None,
+            autostart: false,
+            restart_policy: RestartPolicy::OnFailure {
+                delay_secs: Some(restart_delay_secs),
+                max_retries: Some(max_retries),
+                reset_after_secs: None,
+            },
+        })
+        .unwrap();
+    wait();
+
+    // Start the service
+    eprintln!("Starting failing service");
+    manager
+        .start(ServiceStartCtx {
+            label: service_label.clone(),
+        })
+        .unwrap();
+
+    // Wait for all restart cycles to complete:
+    // Each cycle = fail_delay + restart_delay seconds
+    // Total attempts = max_retries + 1 (initial start + restarts)
+    // Add extra buffer for service manager overhead
+    let total_attempts = max_retries + 1;
+    let wait_secs = (total_attempts as u64) * (fail_delay_secs + restart_delay_secs as u64) + 10;
+    eprintln!(
+        "Waiting {}s for {} attempts to complete",
+        wait_secs, total_attempts
+    );
+    thread::sleep(Duration::from_secs(wait_secs));
+
+    // Check the service has stopped
+    eprintln!("Checking status of service after exhausting retries");
+    let status = manager
+        .status(ServiceStatusCtx {
+            label: service_label.clone(),
+        })
+        .unwrap();
+    assert!(
+        matches!(status, ServiceStatus::Stopped(_)),
+        "service should be stopped after exhausting max_retries, got: {:?}",
+        status
+    );
+
+    // Read the log file and count start markers
+    eprintln!("Checking log file for start markers");
+    let log_contents = std::fs::read_to_string(&log_file_path).unwrap();
+    let start_count = log_contents.lines().filter(|l| l.contains("STARTED")).count();
+    let expected_starts = (max_retries + 1) as usize;
+    eprintln!(
+        "Found {} STARTED markers (expected {})",
+        start_count, expected_starts
+    );
+    assert_eq!(
+        expected_starts, start_count,
+        "expected {} start attempts (1 initial + {} retries), got {}",
+        expected_starts, max_retries, start_count
+    );
+
+    // Cleanup
+    eprintln!("Uninstalling service");
+    manager
+        .uninstall(ServiceUninstallCtx {
+            label: service_label.clone(),
+        })
+        .unwrap();
+    wait();
+
+    eprintln!("Checking status of service after uninstall");
+    assert!(
+        matches!(
+            manager
+                .status(ServiceStatusCtx {
+                    label: service_label,
+                })
+                .unwrap(),
+            ServiceStatus::NotInstalled
+        ),
+        "service should be not installed"
+    );
+
+    // Clean up log file
+    if log_file_path.exists() {
+        std::fs::remove_file(&log_file_path).unwrap();
+    }
 }

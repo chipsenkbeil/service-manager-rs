@@ -63,6 +63,18 @@ enum Action {
         msg: String,
     },
 
+    /// Simulates a failing service: logs a start marker, sleeps, then exits with a non-zero code.
+    /// Used for testing restart policies.
+    Fail {
+        /// Optional file to append start markers to (one "STARTED" line per invocation)
+        #[clap(long)]
+        log_file: Option<PathBuf>,
+
+        /// Seconds to sleep before exiting with failure
+        #[clap(long, default_value = "2")]
+        delay: u64,
+    },
+
     /// Listens for a connection and echoes back anything received
     Listen {
         /// Optional file to write output instead of stderr
@@ -98,6 +110,12 @@ impl Cli {
     /// Runs CLI to completion
     pub fn run(self) -> io::Result<()> {
         match self.action {
+            Action::Fail { log_file, delay } => {
+                let logger = Logger::new(log_file);
+                logger.log("STARTED");
+                thread::sleep(Duration::from_secs(delay));
+                std::process::exit(1);
+            }
             Action::Talk { addr, msg } => {
                 let handle: thread::JoinHandle<io::Result<Vec<u8>>> = thread::spawn(move || {
                     let mut stream = TcpStream::connect(addr)?;

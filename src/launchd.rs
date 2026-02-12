@@ -365,7 +365,11 @@ fn make_plist<'a>(
                     );
                 }
             }
-            RestartPolicy::OnFailure { delay_secs } => {
+            RestartPolicy::OnFailure {
+                delay_secs,
+                max_retries: _, // TODO: no direct launchd equivalent
+                reset_after_secs: _, // TODO: no direct launchd equivalent
+            } => {
                 // Create KeepAlive dictionary with SuccessfulExit=false
                 // This means: restart when exit is NOT successful
                 let mut keep_alive_dict = Dictionary::new();

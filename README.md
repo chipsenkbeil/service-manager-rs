@@ -204,7 +204,11 @@ manager.install(ServiceInstallCtx {
     working_directory: None,
     environment: None,
     autostart: true,
-    restart_policy: RestartPolicy::OnFailure { delay_secs: Some(5) },
+    restart_policy: RestartPolicy::OnFailure {
+        delay_secs: Some(5),
+        max_retries: Some(3),
+        reset_after_secs: Some(3600),
+    },
 }).expect("Failed to install");
 ```
 
