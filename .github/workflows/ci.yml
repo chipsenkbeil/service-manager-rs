@@ -57,6 +57,7 @@ jobs:
           - { rust: stable, os: macos-latest, manager: launchd, test: should_support_launchd_for_system_services_running_as_specific_user, elevated: sudo, args: "--exact" }
           - { rust: stable, os: windows-latest, manager: sc, test: sc_for_system }
           - { rust: stable, os: windows-latest, manager: winsw, test: winsw_for_system }
+          - { rust: stable, os: windows-latest, manager: winsw, test: should_stop_winsw_service_after_max_retries, args: "--exact" }
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust ${{ matrix.rust }}

@@ -328,7 +328,11 @@ fn make_service(
                     let _ = writeln!(service, "RestartSec={delay}");
                 }
             }
-            RestartPolicy::OnFailure { delay_secs } => {
+            RestartPolicy::OnFailure {
+                delay_secs,
+                max_retries: _, // TODO: map to StartLimitBurst
+                reset_after_secs: _, // TODO: map to StartLimitIntervalSec
+            } => {
                 let _ = writeln!(service, "Restart=on-failure");
                 if let Some(delay) = delay_secs {
                     let _ = writeln!(service, "RestartSec={delay}");

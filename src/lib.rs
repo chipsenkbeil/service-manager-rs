@@ -150,6 +150,31 @@ pub enum RestartPolicy {
     OnFailure {
         /// Delay in seconds before restarting
         delay_secs: Option<u32>,
+
+        /// Maximum number of restart attempts before giving up.
+        ///
+        /// If `None`, the service will restart indefinitely (platform default behavior).
+        /// If `Some(n)`, the service will be restarted at most `n` times before stopping.
+        ///
+        /// Platform mapping:
+        /// - **WinSW**: Generates `n` `<onfailure action="restart"/>` elements followed by
+        ///   `<onfailure action="none"/>`.
+        /// - **Systemd**: TODO — map to `StartLimitBurst`.
+        /// - **Launchd**: TODO — no direct equivalent.
+        max_retries: Option<u32>,
+
+        /// Duration in seconds after which the failure counter resets.
+        ///
+        /// If the service runs successfully for this many seconds, any previous failures
+        /// are forgotten and the retry counter starts fresh.
+        ///
+        /// If `None`, the platform default is used (e.g., WinSW defaults to 1 day).
+        ///
+        /// Platform mapping:
+        /// - **WinSW**: Maps to `<resetfailure>`.
+        /// - **Systemd**: TODO — map to `StartLimitIntervalSec`.
+        /// - **Launchd**: TODO — no direct equivalent.
+        reset_after_secs: Option<u32>,
     },
 
     /// Restart the service only when it exits with a zero status (success).
@@ -163,7 +188,11 @@ pub enum RestartPolicy {
 
 impl Default for RestartPolicy {
     fn default() -> Self {
-        RestartPolicy::OnFailure { delay_secs: None }
+        RestartPolicy::OnFailure {
+            delay_secs: None,
+            max_retries: None,
+            reset_after_secs: None,
+        }
     }
 }
 
