@@ -6,7 +6,6 @@ use super::{
 };
 use plist::{Dictionary, Value};
 use std::{
-    borrow::Cow,
     ffi::OsStr,
     io,
     path::PathBuf,
@@ -203,9 +202,47 @@ impl ServiceManager for LaunchdServiceManager {
 
     /// Stops a service.
     ///
-    /// To stop a service with "KeepAlive" enabled, call `uninstall` instead.
+    /// For services with "KeepAlive" enabled, this method will set the "Disabled" key
+    /// in the plist file to prevent the service from automatically restarting. This
+    /// provides consistent cross-platform behavior where stop() persistently stops
+    /// the service until start() is explicitly called.
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
-        wrap_output(launchctl("stop", ctx.label.to_qualified_name().as_str())?)?;
+        let qualified_name = ctx.label.to_qualified_name();
+
+        wrap_output(launchctl("stop", qualified_name.as_str())?)?;
+
+        let plist_path = self.get_plist_path(qualified_name.clone());
+        if !plist_path.exists() {
+            return Ok(());
+        }
+
+        let Ok(plist_data) = std::fs::read(&plist_path) else {
+            return Ok(());
+        };
+
+        let Ok(mut plist) = plist::from_reader::<_, Value>(std::io::Cursor::new(plist_data)) else {
+            return Ok(());
+        };
+
+        let has_keep_alive = matches!(&plist, Value::Dictionary(dict) if dict.contains_key("KeepAlive"));
+
+        if !has_keep_alive {
+            return Ok(());
+        }
+
+        if let Value::Dictionary(ref mut dict) = plist {
+            dict.insert("Disabled".to_string(), Value::Boolean(true));
+        }
+
+        let mut buffer = Vec::new();
+        if plist.to_writer_xml(&mut buffer).is_err() {
+            return Ok(());
+        }
+
+        let _ = utils::write_file(plist_path.as_path(), &buffer, PLIST_FILE_PERMISSIONS);
+        let _ = launchctl("unload", plist_path.to_string_lossy().as_ref());
+        let _ = launchctl("load", plist_path.to_string_lossy().as_ref());
+
         Ok(())
     }
 
@@ -227,66 +264,68 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
-        let mut service_name = ctx.label.to_qualified_name();
-        // Due to we could not get the status of a service via a service label, so we have to run this command twice
-        // in first time, if there is a service exists, the output will advice us a full service label with a prefix.
-        // Or it will return nothing, it means the service is not installed(not exists).
-        let mut out: Cow<str> = Cow::Borrowed("");
-        for i in 0..2 {
-            let output = launchctl("print", &service_name)?;
-            if !output.status.success() {
-                if output.status.code() == Some(64) {
-                    // 64 is the exit code for a service not found
-                    out = Cow::Owned(String::from_utf8_lossy(&output.stderr).to_string());
-                    if out.trim().is_empty() {
-                        out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
-                    }
-                    if i == 0 {
-                        let label = out.lines().find(|line| line.contains(&service_name));
-                        match label {
-                            Some(label) => {
-                                service_name = label.trim().to_string();
-                                continue;
-                            }
-                            None => return Ok(crate::ServiceStatus::NotInstalled),
-                        }
-                    } else {
-                        // We have access to the full service label, so it impossible to get the failed status, or it must be input error.
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!(
-                                "Command failed with exit code {}: {}",
-                                output.status.code().unwrap_or(-1),
-                                out
-                            ),
-                        ));
-                    }
+        let qualified_name = ctx.label.to_qualified_name();
+        let plist_path = self.get_plist_path(qualified_name.clone());
+
+        // First check if the plist file exists to determine if service is installed
+        if !plist_path.exists() {
+            return Ok(crate::ServiceStatus::NotInstalled);
+        }
+
+        // Service is installed (plist exists), now check if it's running
+        // Try to get the full service name with domain prefix
+        let mut service_name = qualified_name.clone();
+        let output = launchctl("print", &service_name)?;
+
+        if !output.status.success() {
+            if output.status.code() == Some(64) {
+                // Exit code 64 means service not found in launchd
+                // But plist exists, so service is installed but not loaded/running
+                // Try to find the full service name from error output
+                let err_output = String::from_utf8_lossy(&output.stderr);
+                let stdout_output = String::from_utf8_lossy(&output.stdout);
+                let search_output = if !err_output.trim().is_empty() {
+                    err_output
                 } else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!(
-                            "Command failed with exit code {}: {}",
-                            output.status.code().unwrap_or(-1),
-                            String::from_utf8_lossy(&output.stderr)
-                        ),
-                    ));
+                    stdout_output
+                };
+
+                if let Some(label_line) = search_output.lines().find(|line| line.contains(&qualified_name)) {
+                    // Found a suggestion for the full service name, try again
+                    service_name = label_line.trim().to_string();
+                    let retry_output = launchctl("print", &service_name)?;
+
+                    if !retry_output.status.success() {
+                        // Still not found, service is installed but stopped
+                        return Ok(crate::ServiceStatus::Stopped(Some(
+                            "Service is installed but not loaded in launchd".to_string()
+                        )));
+                    }
+
+                    // Parse the successful output
+                    let out = String::from_utf8_lossy(&retry_output.stdout);
+                    return parse_launchctl_print_output(&out);
+                } else {
+                    // No service found in launchd, but plist exists
+                    return Ok(crate::ServiceStatus::Stopped(Some(
+                        "Service is installed but not loaded in launchd".to_string()
+                    )));
                 }
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "Command failed with exit code {}: {}",
+                        output.status.code().unwrap_or(-1),
+                        String::from_utf8_lossy(&output.stderr)
+                    ),
+                ));
             }
-            out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
         }
-        let lines = out
-            .lines()
-            .map(|s| s.trim())
-            .filter(|s| s.contains("state"))
-            .collect::<Vec<&str>>();
-        if lines
-            .into_iter()
-            .any(|s| !s.contains("not running") && s.contains("running"))
-        {
-            Ok(crate::ServiceStatus::Running)
-        } else {
-            Ok(crate::ServiceStatus::Stopped(None))
-        }
+
+        // Successfully got service info, parse the output
+        let out = String::from_utf8_lossy(&output.stdout);
+        parse_launchctl_print_output(&out)
     }
 }
 
@@ -298,6 +337,24 @@ fn launchctl(cmd: &str, label: &str) -> io::Result<Output> {
         .arg(cmd)
         .arg(label)
         .output()
+}
+
+/// Parse the output of `launchctl print` to determine service status
+fn parse_launchctl_print_output(output: &str) -> io::Result<crate::ServiceStatus> {
+    let lines: Vec<&str> = output
+        .lines()
+        .map(|s| s.trim())
+        .filter(|s| s.contains("state"))
+        .collect();
+
+    if lines
+        .into_iter()
+        .any(|s| !s.contains("not running") && s.contains("running"))
+    {
+        Ok(crate::ServiceStatus::Running)
+    } else {
+        Ok(crate::ServiceStatus::Stopped(None))
+    }
 }
 
 #[inline]
