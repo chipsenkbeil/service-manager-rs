@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   msrv:
@@ -16,30 +17,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { rust: 1.58.1, os: ubuntu-latest }
-          - { rust: 1.58.1, os: macos-latest }
-          - { rust: 1.58.1, os: windows-latest }
+          - { rust: 1.88.0, os: ubuntu-latest }
+          - { rust: 1.88.0, os: macos-latest }
+          - { rust: 1.88.0, os: windows-latest }
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
       - name: Install Rust ${{ matrix.rust }}
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - name: Build against Rust ${{ matrix.rust }}
         run: cargo build --release
   unit_tests:
     name: "Unit tests for Rust stable"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust ${{ matrix.rust }}
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-      - uses: Swatinem/rust-cache@v1
+      - uses: actions/checkout@v7
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo test
   tests:
     name: "Test Rust ${{ matrix.rust }} for ${{ matrix.test }} w/ ${{ matrix.manager }} (${{ matrix.os }})"
@@ -59,11 +56,10 @@ jobs:
           - { rust: stable, os: windows-latest, manager: winsw, test: winsw_for_system }
           - { rust: stable, os: windows-latest, manager: winsw, test: should_stop_winsw_service_after_max_retries, args: "--exact" }
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
       - name: Install Rust ${{ matrix.rust }}
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
 
       - name: Download WinSW for Windows
@@ -74,7 +70,7 @@ jobs:
           Invoke-WebRequest -Uri ${{ env.WINSW_URL }} -OutFile "$winsw_dir\WinSW.exe"
           echo "$winsw_dir" | Out-File -Append -Encoding utf8 -FilePath $env:GITHUB_PATH
 
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
         run: |
           ${{ matrix.elevated }} rustup default stable
@@ -92,7 +88,7 @@ jobs:
         include:
           - { manager: rc.d, test: rc_d_for_system }
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
       - name: Run ${{ matrix.test }} for ${{ matrix.manager }}
         uses: cross-platform-actions/action@no-vm-shutdown
         with:
@@ -112,14 +108,16 @@ jobs:
   test-alpine-openrc:
     name: "Test Rust stable for ${{ matrix.test }} w/ ${{ matrix.manager }} (Alpine Linux)"
     runs-on: ubuntu-latest
-    container: dockage/alpine:3.16-openrc
+    container:
+      image: dockage/alpine:3.16-openrc
+      options: --init
     strategy:
       fail-fast: false
       matrix:
         include:
           - { manager: OpenRC, test: openrc_for_system }
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
       - name: Set Alpine repositories
         run: |
           echo "http://dl-cdn.alpinelinux.org/alpine/v3.16/main" > /etc/apk/repositories
