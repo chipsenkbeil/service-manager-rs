@@ -3,6 +3,7 @@ use service_manager::*;
 use std::{
     ffi::OsString,
     net::{SocketAddr, TcpListener},
+    path::PathBuf,
     thread,
     time::Duration,
 };
@@ -18,6 +19,17 @@ pub fn is_running_in_ci() -> bool {
 fn wait() {
     eprintln!("Waiting {}s before continuing", WAIT_PERIOD.as_secs_f32());
     thread::sleep(WAIT_PERIOD);
+}
+
+/// Directory a service running as another user can reach.
+///
+/// Not `std::env::temp_dir()`: under `sudo` on macOS that is root's `0700` Darwin temp dir.
+fn shared_temp_dir() -> PathBuf {
+    if cfg!(unix) {
+        PathBuf::from("/tmp")
+    } else {
+        std::env::temp_dir()
+    }
 }
 
 #[allow(dead_code)]
@@ -66,7 +78,7 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
 
     // Copy the service binary to a location where it can be accessed by a different user account
     // if need be.
-    let temp_dir = std::env::temp_dir();
+    let temp_dir = shared_temp_dir();
     let bin_path = assert_cmd::cargo::cargo_bin(crate_name!());
     let temp_bin_path = temp_dir.join(bin_path.file_name().unwrap());
     if temp_bin_path.exists() {
@@ -82,7 +94,7 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
         OsString::from("listen"),
         OsString::from(addr.to_string()),
         OsString::from("--log-file"),
-        std::env::temp_dir()
+        temp_dir
             .join(format!("{service_label}.log"))
             .into_os_string(),
     ];

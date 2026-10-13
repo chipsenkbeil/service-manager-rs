@@ -10,6 +10,7 @@ homepage = "https://github.com/chipsenkbeil/service-manager-rs"
 repository = "https://github.com/chipsenkbeil/service-manager-rs"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
+rust-version = "1.75.0"
 
 [features]
 default = ["encoding"]
