@@ -36,6 +36,10 @@ xml = "1"
 encoding_rs = { version = "0.8", optional = true }
 encoding-utils = { version = "0.1", optional = true }
 
+# getuid() for the launchd `gui/<uid>` domain; 0.38 is the copy `which` already pulls in
+[target.'cfg(target_os = "macos")'.dependencies]
+rustix = { version = "0.38", default-features = false, features = ["std", "process"] }
+
 [dev-dependencies]
 assert_fs = "1"
 indoc = "2"

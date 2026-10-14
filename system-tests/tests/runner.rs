@@ -153,8 +153,6 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
     // Wait for service to be installed
     wait();
 
-    // On Launchd the status will still be reported as `NotInstalled` because the `Disabled` key
-    // was used when a restart policy was applied.
     eprintln!("Checking status of service after install with autostart=false");
     assert!(
         matches!(
@@ -163,9 +161,9 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
                     label: service_label.clone(),
                 })
                 .unwrap(),
-            ServiceStatus::Stopped(_) | ServiceStatus::NotInstalled
+            ServiceStatus::Stopped(_)
         ),
-        "service should be stopped or not installed after install with autostart=false and restart policy"
+        "service should be stopped after install with autostart=false and restart policy"
     );
 
     let is_user_specified =
