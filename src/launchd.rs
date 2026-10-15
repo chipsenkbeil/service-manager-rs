@@ -348,10 +348,17 @@ impl ServiceManager for LaunchdServiceManager {
         // As with `launchctl load`, RunAtLoad (autostart) runs the job now. A plist launchd
         // refuses is removed again so that a failed install() leaves nothing installed; the
         // bootstrap failure is the error worth reporting.
-        target.bootstrap(&plist_path).map_err(|err| {
-            let _ = std::fs::remove_file(&plist_path);
-            err
-        })
+        let Err(err) = target.bootstrap(&plist_path) else {
+            return Ok(());
+        };
+        // A concurrent start() can load the job between the write and this bootstrap, which then
+        // fails with EIO. The job is then loaded from this plist, so the plist stays.
+        if matches!(target.info(), Ok(Some(_))) {
+            return Ok(());
+        }
+
+        let _ = std::fs::remove_file(&plist_path);
+        Err(err)
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
