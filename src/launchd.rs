@@ -54,7 +54,7 @@ const BOOTOUT_TIMEOUT: Duration = Duration::from_secs(300);
 ///
 /// For more details on these, please see `man launchctl`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ServiceDomain {
+pub enum LaunchdServiceDomain {
     /// `user/<uid>/` services.
     ///
     /// launchd loads a plist into this domain only if it sets `LimitLoadToSessionType` to
@@ -67,7 +67,7 @@ pub enum ServiceDomain {
     System,
 }
 
-impl ServiceDomain {
+impl LaunchdServiceDomain {
     /// Infer the service domain from the active execution context.
     ///
     /// Deprecated `launchctl` commands would infer the domain in which services would run. For
@@ -78,9 +78,9 @@ impl ServiceDomain {
         let uid = posix::getuid();
 
         if uid == 0 {
-            ServiceDomain::System
+            LaunchdServiceDomain::System
         } else {
-            ServiceDomain::Gui(uid)
+            LaunchdServiceDomain::Gui(uid)
         }
     }
 
@@ -90,19 +90,19 @@ impl ServiceDomain {
     /// looks the user's home directory up and fails when no user has the uid.
     pub fn plist_dir(self) -> io::Result<PathBuf> {
         let uid = match self {
-            ServiceDomain::System => return Ok(PathBuf::from("/Library/LaunchDaemons")),
-            ServiceDomain::User(uid) | ServiceDomain::Gui(uid) => uid,
+            LaunchdServiceDomain::System => return Ok(PathBuf::from("/Library/LaunchDaemons")),
+            LaunchdServiceDomain::User(uid) | LaunchdServiceDomain::Gui(uid) => uid,
         };
         Ok(posix::home_dir(uid)?.join("Library").join("LaunchAgents"))
     }
 }
 
-impl Display for ServiceDomain {
+impl Display for LaunchdServiceDomain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ServiceDomain::User(uid) => write!(f, "user/{uid}"),
-            ServiceDomain::Gui(uid) => write!(f, "gui/{uid}"),
-            ServiceDomain::System => write!(f, "system"),
+            LaunchdServiceDomain::User(uid) => write!(f, "user/{uid}"),
+            LaunchdServiceDomain::Gui(uid) => write!(f, "gui/{uid}"),
+            LaunchdServiceDomain::System => write!(f, "system"),
         }
     }
 }
@@ -187,7 +187,7 @@ impl From<ServiceNameError> for io::Error {
 
 /// A service in a launchd domain, held as the `<domain>/<label>` service target launchctl takes.
 struct ServiceTarget {
-    domain: ServiceDomain,
+    domain: LaunchdServiceDomain,
     /// `<domain>/<label>`.
     service_target: String,
     /// The index of the `/` between the domain and the label in `service_target`.
@@ -196,7 +196,7 @@ struct ServiceTarget {
 
 impl ServiceTarget {
     /// The service `name` in `domain`.
-    pub fn new(domain: ServiceDomain, name: &ServiceName) -> Self {
+    pub fn new(domain: LaunchdServiceDomain, name: &ServiceName) -> Self {
         use std::fmt::Write as _;
 
         // The longest domain is `user/4294967295`.
@@ -204,7 +204,7 @@ impl ServiceTarget {
 
         let name = name.as_ref();
         let mut service_target = String::with_capacity(MAX_DOMAIN_LEN + 1 + name.len());
-        write!(service_target, "{domain}").expect("ServiceDomain's Display never fails");
+        write!(service_target, "{domain}").expect("LaunchdServiceDomain's Display never fails");
 
         let separator = service_target.len();
         service_target.push('/');
@@ -332,7 +332,7 @@ impl Default for LaunchdInstallConfig {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LaunchdServiceManager {
     /// The domain the service covers.
-    pub domain: ServiceDomain,
+    pub domain: LaunchdServiceDomain,
 
     /// Configuration settings tied to launchd services
     pub config: LaunchdConfig,
@@ -353,7 +353,7 @@ impl LaunchdServiceManager {
     pub fn into_system(self) -> Self {
         Self {
             config: self.config,
-            domain: ServiceDomain::System,
+            domain: LaunchdServiceDomain::System,
         }
     }
 
@@ -361,7 +361,7 @@ impl LaunchdServiceManager {
     pub fn into_user(self) -> Self {
         Self {
             config: self.config,
-            domain: ServiceDomain::Gui(posix::getuid()),
+            domain: LaunchdServiceDomain::Gui(posix::getuid()),
         }
     }
 
@@ -532,15 +532,15 @@ impl ServiceManager for LaunchdServiceManager {
 
     fn level(&self) -> ServiceLevel {
         match self.domain {
-            ServiceDomain::System => ServiceLevel::System,
-            ServiceDomain::User(_) | ServiceDomain::Gui(_) => ServiceLevel::User,
+            LaunchdServiceDomain::System => ServiceLevel::System,
+            LaunchdServiceDomain::User(_) | LaunchdServiceDomain::Gui(_) => ServiceLevel::User,
         }
     }
 
     fn set_level(&mut self, level: ServiceLevel) -> io::Result<()> {
         self.domain = match level {
-            ServiceLevel::System => ServiceDomain::System,
-            ServiceLevel::User => ServiceDomain::Gui(posix::getuid()),
+            ServiceLevel::System => LaunchdServiceDomain::System,
+            ServiceLevel::User => LaunchdServiceDomain::Gui(posix::getuid()),
         };
 
         Ok(())

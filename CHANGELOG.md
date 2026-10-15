@@ -7,36 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New public `LaunchdServiceDomain` answers whether a service runs in the
+  `system`, `gui/` or `user/` launchd domains.
+
 ### Changed
 
+- **BREAKING CHANGE**: `LaunchdServiceManager`'s `user` field has been replaced
+  with a `domain: ServiceDomain`. `manager.level() != LaunchdServiceDomain::System` is equivalent.
+- **BREAKING CHANGE**: Launchd services are managed with `bootstrap`,
+  `bootout`, `kickstart` and `print` against an explicit domain (`system`, or
+  `gui/<uid>` for user services) instead of the legacy `load`,
+  `unload`, `remove`, `start` and `stop` subcommands
+- `launchctl`'s path is now hard-coded to `/bin/launchctl`.
 - Reflect the true MSRV of 1.75.
 - Depend on `which` 8.
 - Depend on `xml` 1, the new name of `xml-rs`.
 - Depend on `encoding_rs` and `encoding-utils` only on Windows.
 - Stop enabling `plist`'s default `serde` feature.
 - Improve compatibility with more dependency versions.
-- Launchd services are managed with `bootstrap`, `bootout`, `kickstart` and `print` against an
-  explicit domain (`system`, or `gui/<uid>` for user services) instead of the legacy `load`,
-  `unload`, `remove`, `start` and `stop` subcommands, and `launchctl` is run from
-  `/bin/launchctl` instead of being looked up on `PATH`.
-  - `stop()` boots the service out of its domain, so launchd no longer restarts a KeepAlive
-    service within seconds of it being stopped. The plist stays, so the service loads again at
-    the next boot or login unless the plist sets `Disabled`.
-  - `stop()`, `install()` and `uninstall()` wait until launchd has torn the job down, up to its
-    `ExitTimeOut` plus a few seconds, and `start()` waits out a teardown already in progress.
-  - `start()` waits out launchd's respawn throttle (`10s` by default) for a job that exited
-    moments ago, where `launchctl start` returned at once.
-  - `status()` reports `Stopped` instead of `NotInstalled` for a service whose plist is
-    installed but which is not loaded, and `Running` while launchd is still starting the job.
-  - `install()` and `start()` return an error when launchd refuses the plist, for example an
-    invalid plist or a label turned off with `launchctl disable`, where `launchctl load`
-    reported success and loaded nothing. A failed `install()` removes the plist it wrote.
-  - `uninstall()` returns `launchctl` failures, such as a non-root caller managing a system
-    service, instead of ignoring them. `stop()` on a service that is not installed returns
-    `NotFound`.
-  - A label that is empty, contains `/` or a control character, or is too long for a file name
-    is rejected with `InvalidInput`, since `launchctl` would read it as a different service or
-    as the whole domain.
 
 ### Fixed
 
