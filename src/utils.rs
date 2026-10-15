@@ -99,3 +99,95 @@ pub(crate) mod encoding {
             .map_err(|err| Error::new(ErrorKind::InvalidData, err))
     }
 }
+
+/// Safe wrappers over the POSIX calls the launchd manager makes.
+#[cfg(target_os = "macos")]
+pub mod posix {
+    use std::{
+        ffi::{CStr, OsStr},
+        io,
+        mem::MaybeUninit,
+        os::unix::ffi::OsStrExt,
+        path::PathBuf,
+    };
+
+    /// The calling process's real user id.
+    pub fn getuid() -> libc::uid_t {
+        // SAFETY: getuid takes no arguments, cannot fail and touches no memory of ours.
+        unsafe { libc::getuid() }
+    }
+
+    /// The home directory of the user with `uid`, from the password database.
+    ///
+    /// Fails with `NotFound` when no user has `uid` or the user has no home directory.
+    pub fn home_dir(uid: libc::uid_t) -> io::Result<PathBuf> {
+        // getpwuid_r reports ERANGE when the entry does not fit, and the buffer doubles up to
+        // the cap. Real entries are a few hundred bytes.
+        const INITIAL_BUFFER_LEN: usize = 1024;
+        const MAX_BUFFER_LEN: usize = 1024 * 1024;
+
+        let mut buffer: Vec<libc::c_char> = vec![0; INITIAL_BUFFER_LEN];
+        loop {
+            let mut passwd = MaybeUninit::<libc::passwd>::uninit();
+            let mut result: *mut libc::passwd = std::ptr::null_mut();
+            // SAFETY: passwd and result are valid for writes, and buffer is valid for
+            // buffer.len() bytes; getpwuid_r writes only within them.
+            let errno = unsafe {
+                libc::getpwuid_r(
+                    uid,
+                    passwd.as_mut_ptr(),
+                    buffer.as_mut_ptr(),
+                    buffer.len(),
+                    &mut result,
+                )
+            };
+            match errno {
+                0 if result.is_null() => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("no user has uid {uid}"),
+                    ));
+                }
+                0 => {
+                    // SAFETY: a zero return with a non-null result means getpwuid_r filled
+                    // the passwd it points at.
+                    let dir = unsafe { (*result).pw_dir };
+                    if dir.is_null() {
+                        return Err(io::Error::new(
+                            io::ErrorKind::NotFound,
+                            format!("user {uid} has no home directory"),
+                        ));
+                    }
+                    // SAFETY: pw_dir is a NUL-terminated string inside buffer, which is alive
+                    // and unchanged until this function returns.
+                    let dir = unsafe { CStr::from_ptr(dir) };
+                    return Ok(PathBuf::from(OsStr::from_bytes(dir.to_bytes())));
+                }
+                libc::ERANGE if buffer.len() < MAX_BUFFER_LEN => {
+                    buffer.resize(buffer.len() * 2, 0);
+                }
+                errno => return Err(io::Error::from_raw_os_error(errno)),
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn home_dir_reads_the_password_database() {
+            assert_eq!(home_dir(0).unwrap(), PathBuf::from("/var/root"));
+        }
+
+        #[test]
+        fn home_dir_of_a_uid_no_user_has_is_not_found() {
+            // Far above any uid macOS assigns: system accounts sit below 500, local ones start
+            // at 501, and nobody is -2 (4294967294).
+            const UNUSED_UID: libc::uid_t = 4_000_000_000;
+
+            let err = home_dir(UNUSED_UID).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        }
+    }
+}

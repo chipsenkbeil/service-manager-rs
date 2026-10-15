@@ -1,11 +1,10 @@
-use crate::utils::wrap_output;
+use crate::utils::{posix, wrap_output};
 
 use super::{
     utils, RestartPolicy, ServiceInstallCtx, ServiceLabel, ServiceLevel, ServiceManager,
     ServiceStartCtx, ServiceStopCtx, ServiceUninstallCtx,
 };
 use plist::{Dictionary, Value};
-use rustix::{fs::Uid, process::getuid};
 use std::{
     convert::Infallible,
     error::Error,
@@ -60,9 +59,9 @@ pub enum ServiceDomain {
     ///
     /// launchd loads a plist into this domain only if it sets `LimitLoadToSessionType` to
     /// `Background`; bootstrap fails with EIO otherwise.
-    User(Uid),
+    User(libc::uid_t),
     /// `gui/<uid>/` services.
-    Gui(Uid),
+    Gui(libc::uid_t),
     /// `system/` services.
     #[default]
     System,
@@ -76,9 +75,9 @@ impl ServiceDomain {
     /// function models this inference.
     #[must_use]
     pub fn infer() -> Self {
-        let uid = rustix::process::getuid();
+        let uid = posix::getuid();
 
-        if uid.is_root() {
+        if uid == 0 {
             ServiceDomain::System
         } else {
             ServiceDomain::Gui(uid)
@@ -94,23 +93,15 @@ impl ServiceDomain {
             ServiceDomain::System => return Ok(PathBuf::from("/Library/LaunchDaemons")),
             ServiceDomain::User(uid) | ServiceDomain::Gui(uid) => uid,
         };
-        let user = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid.as_raw()))?
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("no user has uid {}", uid.as_raw()),
-                )
-            })?;
-
-        Ok(user.dir.join("Library").join("LaunchAgents"))
+        Ok(posix::home_dir(uid)?.join("Library").join("LaunchAgents"))
     }
 }
 
 impl Display for ServiceDomain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ServiceDomain::User(uid) => write!(f, "user/{}", uid.as_raw()),
-            ServiceDomain::Gui(uid) => write!(f, "gui/{}", uid.as_raw()),
+            ServiceDomain::User(uid) => write!(f, "user/{uid}"),
+            ServiceDomain::Gui(uid) => write!(f, "gui/{uid}"),
             ServiceDomain::System => write!(f, "system"),
         }
     }
@@ -291,7 +282,7 @@ impl LaunchdServiceManager {
     pub fn into_user(self) -> Self {
         Self {
             config: self.config,
-            domain: ServiceDomain::Gui(getuid()),
+            domain: ServiceDomain::Gui(posix::getuid()),
         }
     }
 
@@ -431,7 +422,7 @@ impl ServiceManager for LaunchdServiceManager {
     fn set_level(&mut self, level: ServiceLevel) -> io::Result<()> {
         self.domain = match level {
             ServiceLevel::System => ServiceDomain::System,
-            ServiceLevel::User => ServiceDomain::Gui(getuid()),
+            ServiceLevel::User => ServiceDomain::Gui(posix::getuid()),
         };
 
         Ok(())
