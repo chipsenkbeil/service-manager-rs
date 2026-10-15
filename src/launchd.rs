@@ -1,20 +1,309 @@
-use crate::utils::wrap_output;
+use crate::utils::{posix, wrap_output};
 
 use super::{
-    utils, RestartPolicy, ServiceInstallCtx, ServiceLevel, ServiceManager, ServiceStartCtx,
-    ServiceStopCtx, ServiceUninstallCtx,
+    utils, RestartPolicy, ServiceInstallCtx, ServiceLabel, ServiceLevel, ServiceManager,
+    ServiceStartCtx, ServiceStopCtx, ServiceUninstallCtx,
 };
 use plist::{Dictionary, Value};
 use std::{
-    borrow::Cow,
+    convert::Infallible,
+    error::Error,
     ffi::OsStr,
-    io,
-    path::PathBuf,
-    process::{Command, Output, Stdio},
+    fmt::Display,
+    fs::OpenOptions,
+    io::{self, Write},
+    path::{Path, PathBuf},
+    process::{self, Command, Output, Stdio},
+    str::FromStr,
+    thread,
+    time::{Duration, Instant},
 };
 
-static LAUNCHCTL: &str = "launchctl";
+mod launchctl;
+
+use launchctl::{
+    LaunchCtl, LaunchCtlBootoutError, LaunchCtlWaitError, ServiceInfo, ServicePrintoutError,
+};
+
+/// The appropriate file permissions for a PLIST file.
 const PLIST_FILE_PERMISSIONS: u32 = 0o644;
+
+/// How long `install()`, `stop()` and `uninstall()` wait for launchd to boot a service out, and
+/// `start()` for a teardown already in progress.
+///
+/// `LaunchCtl::bootout` already bounds the wait by the job's own ExitTimeOut; this caps it for a
+/// plist whose ExitTimeOut is longer than a caller should block. A generated plist leaves
+/// ExitTimeOut at launchd's default (5s), so the cap only binds for a custom plist above 58s,
+/// which then fails with `TimedOut` while launchd is still tearing the job down.
+const BOOTOUT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The domain which a service can run.
+///
+/// `launchd` supports user, gui and system services. It supports more, but they appear to be
+/// irrelevant.
+///
+/// System services are services which run on the system for all the time through which a system is
+/// booted up.
+///
+/// Gui services (or gui agents) start when a user logs into the graphical session and last for as
+/// long as the user is logged in.
+///
+/// User services are background services that run on a per-user basis. The lifetime appears
+/// unclear, as the man page says:
+///
+/// > Targets the user domain for the given UID or a service within that domain. A user domain may
+/// > exist independently of a logged-in user.
+///
+/// For more details on these, please see `man launchctl`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LaunchdServiceDomain {
+    /// `user/<uid>/` services.
+    ///
+    /// launchd loads a plist into this domain only if it sets `LimitLoadToSessionType` to
+    /// `Background`; bootstrap fails with EIO otherwise.
+    User(u32),
+    /// `gui/<uid>/` services.
+    Gui(u32),
+    /// `system/` services.
+    #[default]
+    System,
+}
+
+impl LaunchdServiceDomain {
+    /// Infer the service domain from the active execution context.
+    ///
+    /// Deprecated `launchctl` commands would infer the domain in which services would run. For
+    /// example, `launchctl load` would request a service be loaded into an inferred domain. This
+    /// function models this inference.
+    #[must_use]
+    pub fn infer() -> Self {
+        let uid = posix::getuid();
+
+        if uid == 0 {
+            LaunchdServiceDomain::System
+        } else {
+            LaunchdServiceDomain::Gui(uid)
+        }
+    }
+
+    /// Determine the appropriate path for creating service plists.
+    ///
+    /// `gui/<uid>` and `user/<uid>` agents live in that user's `~/Library/LaunchAgents`, so this
+    /// looks the user's home directory up and fails when no user has the uid.
+    pub fn plist_dir(self) -> io::Result<PathBuf> {
+        let uid = match self {
+            LaunchdServiceDomain::System => return Ok(PathBuf::from("/Library/LaunchDaemons")),
+            LaunchdServiceDomain::User(uid) | LaunchdServiceDomain::Gui(uid) => uid,
+        };
+        Ok(posix::home_dir(uid)?.join("Library").join("LaunchAgents"))
+    }
+}
+
+impl Display for LaunchdServiceDomain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LaunchdServiceDomain::User(uid) => write!(f, "user/{uid}"),
+            LaunchdServiceDomain::Gui(uid) => write!(f, "gui/{uid}"),
+            LaunchdServiceDomain::System => write!(f, "system"),
+        }
+    }
+}
+
+/// A launchd label that is safe to put in a service target and to name a plist file with.
+struct ServiceName(String);
+
+impl TryFrom<String> for ServiceName {
+    type Error = ServiceNameError;
+
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        // The longest file name APFS and HFS+ accept, in bytes.
+        const NAME_MAX: usize = 255;
+
+        if name.is_empty() {
+            return Err(ServiceNameError::Empty);
+        }
+        if name.contains('/') {
+            return Err(ServiceNameError::Slash(name));
+        }
+        if name.contains(char::is_control) {
+            return Err(ServiceNameError::ControlCharacter(name));
+        }
+        if name.len() + ".plist".len() > NAME_MAX {
+            return Err(ServiceNameError::TooLong(name));
+        }
+
+        Ok(Self(name))
+    }
+}
+
+impl AsRef<str> for ServiceName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for ServiceName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Why a label cannot name a launchd service.
+#[derive(Debug)]
+enum ServiceNameError {
+    /// The label is empty, so its service target would name the whole domain.
+    Empty,
+    /// The label holds a `/`, which ends a service target's label and separates path components.
+    Slash(String),
+    /// The label holds a control character, which `launchctl print` prints unescaped.
+    ControlCharacter(String),
+    /// The label's plist file name is longer than APFS and HFS+ accept.
+    TooLong(String),
+}
+
+impl Error for ServiceNameError {}
+
+impl Display for ServiceNameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServiceNameError::Empty => write!(f, "service label is empty"),
+            ServiceNameError::Slash(name) => write!(f, "service label {name:?} contains a `/`"),
+            ServiceNameError::ControlCharacter(name) => {
+                write!(f, "service label {name:?} contains a control character")
+            }
+            ServiceNameError::TooLong(name) => {
+                write!(
+                    f,
+                    "service label {name:?} is too long for a plist file name"
+                )
+            }
+        }
+    }
+}
+
+impl From<ServiceNameError> for io::Error {
+    fn from(err: ServiceNameError) -> Self {
+        io::Error::new(io::ErrorKind::InvalidInput, err)
+    }
+}
+
+/// A service in a launchd domain, held as the `<domain>/<label>` service target launchctl takes.
+struct ServiceTarget {
+    domain: LaunchdServiceDomain,
+    /// `<domain>/<label>`.
+    service_target: String,
+    /// The index of the `/` between the domain and the label in `service_target`.
+    separator: usize,
+}
+
+impl ServiceTarget {
+    /// The service `name` in `domain`.
+    pub fn new(domain: LaunchdServiceDomain, name: &ServiceName) -> Self {
+        use std::fmt::Write as _;
+
+        // The longest domain is `user/4294967295`.
+        const MAX_DOMAIN_LEN: usize = 15;
+
+        let name = name.as_ref();
+        let mut service_target = String::with_capacity(MAX_DOMAIN_LEN + 1 + name.len());
+        write!(service_target, "{domain}").expect("LaunchdServiceDomain's Display never fails");
+
+        let separator = service_target.len();
+        service_target.push('/');
+        service_target.push_str(name);
+
+        Self {
+            domain,
+            service_target,
+            separator,
+        }
+    }
+
+    /// The domain half of the service target, such as `gui/501`.
+    pub fn domain_target(&self) -> &str {
+        &self.service_target[..self.separator]
+    }
+
+    /// The service's label.
+    pub fn label(&self) -> &str {
+        &self.service_target[self.separator + 1..]
+    }
+
+    /// The plist launchd loads the service from.
+    pub fn plist_path(&self) -> io::Result<PathBuf> {
+        Ok(self
+            .domain
+            .plist_dir()?
+            .join(format!("{}.plist", self.label())))
+    }
+
+    /// The service's info, or `None` when it is not loaded.
+    pub fn info(&self) -> Result<Option<ServiceInfo>, ServicePrintoutError> {
+        LaunchCtl::print_service(&self.service_target)
+    }
+
+    /// Polls the service's info until `done` holds or the service is not loaded.
+    ///
+    /// See [`LaunchCtl::wait_until`].
+    pub fn wait_until(
+        &self,
+        timeout: Duration,
+        done: impl Fn(&ServiceInfo) -> bool,
+    ) -> Result<Option<ServiceInfo>, LaunchCtlWaitError> {
+        LaunchCtl::wait_until(&self.service_target, timeout, done)
+    }
+
+    /// Loads the plist at `plist_path` into the service's domain.
+    pub fn bootstrap(&self, plist_path: &Path) -> io::Result<()> {
+        LaunchCtl::bootstrap_plists(self.domain_target(), std::iter::once(plist_path))?;
+        Ok(())
+    }
+
+    /// Removes the service from its domain and waits for launchd to finish tearing it down.
+    ///
+    /// See [`LaunchCtl::bootout`].
+    pub fn bootout(&self, timeout: Duration) -> Result<(), LaunchCtlBootoutError> {
+        LaunchCtl::bootout(&self.service_target, timeout)
+    }
+
+    /// Boots the service out, counting a service that was not loaded as booted out.
+    pub fn bootout_if_loaded(&self) -> io::Result<()> {
+        match self.bootout(BOOTOUT_TIMEOUT) {
+            Ok(()) | Err(LaunchCtlBootoutError::NotLoaded) => Ok(()),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    /// Starts the loaded service.
+    pub fn kickstart(&self) -> io::Result<()> {
+        LaunchCtl::kickstart(&self.service_target)?;
+        Ok(())
+    }
+
+    /// The service's status as [`ServiceManager::status`] reports it.
+    pub fn status(&self) -> io::Result<crate::ServiceStatus> {
+        let info = match self.info() {
+            Ok(info) => info,
+            // With no graphical login the job cannot run, but launchd loads its plist at the next
+            // login, so the plist decides, as it does for a job that is not loaded.
+            Err(ServicePrintoutError::DomainNotFound(_)) => None,
+            Err(err) => return Err(err.into()),
+        };
+
+        match info {
+            Some(info) if info.state.is_running() => Ok(crate::ServiceStatus::Running),
+            Some(_) => Ok(crate::ServiceStatus::Stopped(None)),
+            None if self.plist_path()?.try_exists()? => Ok(crate::ServiceStatus::Stopped(None)),
+            None => Ok(crate::ServiceStatus::NotInstalled),
+        }
+    }
+}
+
+impl Display for ServiceTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.service_target)
+    }
+}
 
 /// Configuration settings tied to launchd services
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -37,10 +326,15 @@ impl Default for LaunchdInstallConfig {
 }
 
 /// Implementation of [`ServiceManager`] for MacOS's [Launchd](https://en.wikipedia.org/wiki/Launchd)
+///
+/// System services live in the `system` domain. User services live in the calling user's
+/// `gui/<uid>` domain, which exists only while that user is logged in graphically. `user/<uid>`
+/// exists without a graphical login, but loads only plists that set `LimitLoadToSessionType` to
+/// `Background`, which the generated plist does not.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LaunchdServiceManager {
-    /// Whether or not this manager is operating at the user-level
-    pub user: bool,
+    /// The domain the service covers.
+    pub domain: LaunchdServiceDomain,
 
     /// Configuration settings tied to launchd services
     pub config: LaunchdConfig,
@@ -61,7 +355,7 @@ impl LaunchdServiceManager {
     pub fn into_system(self) -> Self {
         Self {
             config: self.config,
-            user: false,
+            domain: LaunchdServiceDomain::System,
         }
     }
 
@@ -69,54 +363,46 @@ impl LaunchdServiceManager {
     pub fn into_user(self) -> Self {
         Self {
             config: self.config,
-            user: true,
+            domain: LaunchdServiceDomain::Gui(posix::getuid()),
         }
     }
 
     /// Update manager to use the specified config
     pub fn with_config(self, config: LaunchdConfig) -> Self {
-        Self {
-            config,
-            user: self.user,
-        }
+        Self { config, ..self }
     }
 
-    fn get_plist_path(&self, qualified_name: String) -> PathBuf {
-        let dir_path = if self.user {
-            user_agent_dir_path().unwrap()
-        } else {
-            global_daemon_dir_path()
-        };
+    fn plist_dir(&self) -> io::Result<PathBuf> {
+        self.domain.plist_dir()
+    }
 
-        dir_path.join(format!("{}.plist", qualified_name))
+    /// The service `label` in this manager's domain.
+    ///
+    /// Fails with `InvalidInput` when the label cannot name a launchd service.
+    fn target(&self, label: &ServiceLabel) -> io::Result<ServiceTarget> {
+        let name = ServiceName::try_from(label.to_qualified_name())?;
+        Ok(ServiceTarget::new(self.domain, &name))
     }
 }
 
 impl ServiceManager for LaunchdServiceManager {
     fn available(&self) -> io::Result<bool> {
-        match which::which(LAUNCHCTL) {
-            Ok(_) => Ok(true),
-            Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
-        }
+        Ok(LaunchCtl::available())
     }
 
+    /// Installs a service, booting out a loaded copy of it first.
+    ///
+    /// Blocks while launchd tears that copy down, for up to its ExitTimeOut plus 2s (12s when
+    /// ExitTimeOut is 0) and at most 1 minute, then fails with `TimedOut`.
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
-        let dir_path = if self.user {
-            user_agent_dir_path()?
-        } else {
-            global_daemon_dir_path()
-        };
+        let target = self.target(&ctx.label)?;
+        std::fs::create_dir_all(self.plist_dir()?)?;
 
-        std::fs::create_dir_all(&dir_path)?;
-
-        let qualified_name = ctx.label.to_qualified_name();
-        let plist_path = dir_path.join(format!("{}.plist", qualified_name));
         let plist = match ctx.contents {
             Some(contents) => contents,
             _ => make_plist(
                 &self.config.install,
-                &qualified_name,
+                target.label(),
                 ctx.cmd_iter(),
                 ctx.username.clone(),
                 ctx.working_directory.clone(),
@@ -126,190 +412,166 @@ impl ServiceManager for LaunchdServiceManager {
             ),
         };
 
-        // Unload old service first if it exists
-        if plist_path.exists() {
-            let _ = wrap_output(launchctl("remove", ctx.label.to_qualified_name().as_str())?);
-        }
-
+        let plist_path = target.plist_path()?;
+        target.bootout_if_loaded()?;
         utils::write_file(
             plist_path.as_path(),
             plist.as_bytes(),
             PLIST_FILE_PERMISSIONS,
         )?;
 
-        // Load the service.
-        // Services with KeepAlive configured will have Disabled=true set, preventing auto-start
-        // until explicitly started via start(). This provides cross-platform consistency where
-        // install() never auto-starts services.
-        wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
-
-        Ok(())
-    }
-
-    fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
-        let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
-        // Service might already be removed (if it has "KeepAlive")
-        let _ = wrap_output(launchctl("remove", ctx.label.to_qualified_name().as_str())?);
-        let _ = std::fs::remove_file(plist_path);
-        Ok(())
-    }
-
-    fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
-        let qualified_name = ctx.label.to_qualified_name();
-        let plist_path = self.get_plist_path(qualified_name.clone());
-
-        if !plist_path.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("Service {} is not installed", qualified_name),
-            ));
+        // bootstrap refuses a plist that sets Disabled, which make_plist does for KeepAlive
+        // services so that installing one does not start it. start() lifts it. A plist that does
+        // not parse counts as not disabled, and bootstrap reports it.
+        let disabled = Value::from_reader(io::Cursor::new(plist.as_bytes()))
+            .ok()
+            .and_then(Value::into_dictionary)
+            .and_then(|dict| dict.get("Disabled").and_then(Value::as_boolean))
+            .unwrap_or(false);
+        if disabled {
+            return Ok(());
         }
 
-        let plist_data = std::fs::read(&plist_path)?;
-        let mut plist: Value = plist::from_reader(std::io::Cursor::new(plist_data))
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        let is_disabled = if let Value::Dictionary(ref dict) = plist {
-            dict.get("Disabled")
-                .and_then(|v| v.as_boolean())
-                .unwrap_or(false)
-        } else {
-            false
+        // As with `launchctl load`, RunAtLoad (autostart) runs the job now. A plist launchd
+        // refuses is removed again so that a failed install() leaves nothing installed; the
+        // bootstrap failure is the error worth reporting.
+        let Err(err) = target.bootstrap(&plist_path) else {
+            return Ok(());
         };
-
-        if is_disabled {
-            // Service was disable to prevent automatic start when KeepAlive is used. Now the
-            // disabled key will be removed. This makes the services behave in a more sane way like
-            // service managers on other platforms.
-            if let Value::Dictionary(ref mut dict) = plist {
-                dict.remove("Disabled");
-            }
-
-            let mut buffer = Vec::new();
-            plist
-                .to_writer_xml(&mut buffer)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            utils::write_file(plist_path.as_path(), &buffer, PLIST_FILE_PERMISSIONS)?;
-
-            let _ = launchctl("unload", plist_path.to_string_lossy().as_ref());
-            wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
-        } else {
-            // Service is not disabled, use regular start command
-            // This works for non-KeepAlive services
-            wrap_output(launchctl("start", qualified_name.as_str())?)?;
+        // A concurrent start() can load the job between the write and this bootstrap, which then
+        // fails with EIO. The job is then loaded from this plist, so the plist stays.
+        if matches!(target.info(), Ok(Some(_))) {
+            return Ok(());
         }
 
-        Ok(())
+        let _ = std::fs::remove_file(&plist_path);
+        Err(err)
     }
 
-    /// Stops a service.
+    /// Uninstalls a service, booting it out of its launchd domain and removing its plist.
     ///
-    /// To stop a service with "KeepAlive" enabled, call `uninstall` instead.
+    /// Blocks while launchd tears the job down, for up to its ExitTimeOut plus 2s (12s when
+    /// ExitTimeOut is 0) and at most 1 minute, then fails with `TimedOut`.
+    fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
+        let target = self.target(&ctx.label)?;
+        let plist_path = target.plist_path()?;
+        target.bootout_if_loaded()?;
+        std::fs::remove_file(&plist_path).or_else(|err| match err.kind() {
+            io::ErrorKind::NotFound => Ok(()),
+            _ => Err(err),
+        })
+    }
+
+    /// Starts a service, loading it into its launchd domain first if it is not loaded.
+    ///
+    /// Blocks while launchd tears down a job that is being stopped, for up to its ExitTimeOut plus
+    /// 2s (12s when ExitTimeOut is 0) and at most 1 minute, then fails with `TimedOut`. Also
+    /// blocks while launchd throttles a job that exited less than its ThrottleInterval (`10s` by
+    /// default) ago.
+    fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
+        let target = self.target(&ctx.label)?;
+        let plist_path = target.plist_path()?;
+        if !plist_path.try_exists()? {
+            return Err(not_installed(&ctx.label));
+        }
+
+        // kickstart does nothing to a job launchd is tearing down, so let the teardown finish
+        // and see whether the job is still loaded afterwards.
+        let info = match target.info()? {
+            Some(info) if info.state.is_stopping() => {
+                let timeout = info.teardown_timeout().min(BOOTOUT_TIMEOUT);
+                target.wait_until(timeout, |info| !info.state.is_stopping())?
+            }
+            info => info,
+        };
+        if info.is_some() {
+            return target.kickstart();
+        }
+
+        // bootstrap refuses a plist that sets Disabled, so drop it from a plist install() left
+        // disabled. A plist a concurrent uninstall() removed counts as not installed.
+        let not_installed_if_missing = |err: io::Error| match err.kind() {
+            io::ErrorKind::NotFound => not_installed(&ctx.label),
+            _ => err,
+        };
+        let mut plist = Value::from_reader(io::Cursor::new(
+            std::fs::read(&plist_path).map_err(not_installed_if_missing)?,
+        ))
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        let was_disabled = plist
+            .as_dictionary_mut()
+            .and_then(|dict| dict.remove("Disabled"))
+            .and_then(|disabled| disabled.as_boolean())
+            == Some(true);
+        if was_disabled {
+            let mut buffer = Vec::new();
+            plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
+            // Not created afresh, so a plist a concurrent uninstall() removed stays removed.
+            let mut file = OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&plist_path)
+                .map_err(not_installed_if_missing)?;
+            file.write_all(&buffer)?;
+            file.sync_all()?;
+        }
+
+        // A concurrent start() can load the job first, which fails this bootstrap with EIO, and a
+        // concurrent uninstall() can remove the plist, so the state afterwards decides.
+        let bootstrapped = target.bootstrap(&plist_path);
+        match target.info()? {
+            // RunAtLoad and KeepAlive spawn the job during bootstrap, and kickstarting a job that
+            // already ran and exited would run it a second time.
+            Some(info) if info.runs > 0 => Ok(()),
+            Some(_) => target.kickstart(),
+            None if !plist_path.try_exists()? => Err(not_installed(&ctx.label)),
+            None => bootstrapped,
+        }
+    }
+
+    /// Stops a service by removing it from its launchd domain, so KeepAlive cannot restart it.
+    ///
+    /// The plist stays in place, so launchd loads the service again at the next boot or login
+    /// unless the plist sets `Disabled`.
+    ///
+    /// Blocks while launchd tears the job down, for up to its ExitTimeOut plus 2s (12s when
+    /// ExitTimeOut is 0) and at most 1 minute, then fails with `TimedOut`.
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
-        wrap_output(launchctl("stop", ctx.label.to_qualified_name().as_str())?)?;
-        Ok(())
+        let target = self.target(&ctx.label)?;
+        match target.bootout(BOOTOUT_TIMEOUT) {
+            Ok(()) => Ok(()),
+            Err(LaunchCtlBootoutError::NotLoaded) if target.plist_path()?.try_exists()? => Ok(()),
+            Err(LaunchCtlBootoutError::NotLoaded) => Err(not_installed(&ctx.label)),
+            Err(err) => Err(err.into()),
+        }
     }
 
     fn level(&self) -> ServiceLevel {
-        if self.user {
-            ServiceLevel::User
-        } else {
-            ServiceLevel::System
+        match self.domain {
+            LaunchdServiceDomain::System => ServiceLevel::System,
+            LaunchdServiceDomain::User(_) | LaunchdServiceDomain::Gui(_) => ServiceLevel::User,
         }
     }
 
     fn set_level(&mut self, level: ServiceLevel) -> io::Result<()> {
-        match level {
-            ServiceLevel::System => self.user = false,
-            ServiceLevel::User => self.user = true,
-        }
+        self.domain = match level {
+            ServiceLevel::System => LaunchdServiceDomain::System,
+            ServiceLevel::User => LaunchdServiceDomain::Gui(posix::getuid()),
+        };
 
         Ok(())
     }
 
     fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
-        let mut service_name = ctx.label.to_qualified_name();
-        // Due to we could not get the status of a service via a service label, so we have to run this command twice
-        // in first time, if there is a service exists, the output will advice us a full service label with a prefix.
-        // Or it will return nothing, it means the service is not installed(not exists).
-        let mut out: Cow<str> = Cow::Borrowed("");
-        for i in 0..2 {
-            let output = launchctl("print", &service_name)?;
-            if !output.status.success() {
-                if output.status.code() == Some(64) {
-                    // 64 is the exit code for a service not found
-                    out = Cow::Owned(String::from_utf8_lossy(&output.stderr).to_string());
-                    if out.trim().is_empty() {
-                        out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
-                    }
-                    if i == 0 {
-                        let label = out.lines().find(|line| line.contains(&service_name));
-                        match label {
-                            Some(label) => {
-                                service_name = label.trim().to_string();
-                                continue;
-                            }
-                            None => return Ok(crate::ServiceStatus::NotInstalled),
-                        }
-                    } else {
-                        // We have access to the full service label, so it impossible to get the failed status, or it must be input error.
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!(
-                                "Command failed with exit code {}: {}",
-                                output.status.code().unwrap_or(-1),
-                                out
-                            ),
-                        ));
-                    }
-                } else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!(
-                            "Command failed with exit code {}: {}",
-                            output.status.code().unwrap_or(-1),
-                            String::from_utf8_lossy(&output.stderr)
-                        ),
-                    ));
-                }
-            }
-            out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
-        }
-        let lines = out
-            .lines()
-            .map(|s| s.trim())
-            .filter(|s| s.contains("state"))
-            .collect::<Vec<&str>>();
-        if lines
-            .into_iter()
-            .any(|s| !s.contains("not running") && s.contains("running"))
-        {
-            Ok(crate::ServiceStatus::Running)
-        } else {
-            Ok(crate::ServiceStatus::Stopped(None))
-        }
+        self.target(&ctx.label)?.status()
     }
 }
 
-fn launchctl(cmd: &str, label: &str) -> io::Result<Output> {
-    Command::new(LAUNCHCTL)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .arg(cmd)
-        .arg(label)
-        .output()
-}
-
-#[inline]
-fn global_daemon_dir_path() -> PathBuf {
-    PathBuf::from("/Library/LaunchDaemons")
-}
-
-fn user_agent_dir_path() -> io::Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Unable to locate home directory"))?
-        .join("Library")
-        .join("LaunchAgents"))
+fn not_installed(label: &ServiceLabel) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("Service {} is not installed", label.to_qualified_name()),
+    )
 }
 
 fn make_plist<'a>(
@@ -367,7 +629,7 @@ fn make_plist<'a>(
             }
             RestartPolicy::OnFailure {
                 delay_secs,
-                max_retries: _, // TODO: no direct launchd equivalent
+                max_retries: _,      // TODO: no direct launchd equivalent
                 reset_after_secs: _, // TODO: no direct launchd equivalent
             } => {
                 // Create KeepAlive dictionary with SuccessfulExit=false
@@ -446,4 +708,37 @@ fn make_plist<'a>(
     let mut buffer = Vec::new();
     plist.to_writer_xml(&mut buffer).unwrap();
     String::from_utf8(buffer).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A label that slipped through would point a service target at the wrong service or the
+    // whole domain, or put the plist outside the domain's plist directory.
+    #[test]
+    fn service_name_rejects_labels_launchctl_or_the_filesystem_would_misread() {
+        let too_long = "x".repeat(250);
+        for label in [
+            "",
+            "/",
+            "/tmp/example",
+            "../escape",
+            "com.example/other",
+            "com.example.app\n\tstate = running",
+            &too_long,
+        ] {
+            let err = ServiceName::try_from(label.to_owned())
+                .err()
+                .unwrap_or_else(|| panic!("label {label:?} was accepted"));
+            assert_eq!(io::Error::from(err).kind(), io::ErrorKind::InvalidInput);
+        }
+
+        for label in ["com.example.app", &"x".repeat(249)] {
+            assert!(
+                ServiceName::try_from(label.to_owned()).is_ok(),
+                "label {label:?} was rejected"
+            );
+        }
+    }
 }
