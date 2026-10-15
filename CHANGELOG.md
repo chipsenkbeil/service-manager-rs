@@ -12,15 +12,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New public `LaunchdServiceDomain` answers whether a service runs in the
   `system`, `gui/` or `user/` launchd domains.
 
+### Fixed
+
+- `LaunchdServiceManager::status` could report a different service than the one
+  specified.
+- `LaunchdServiceManager::status` could misreport a running state for a service
+  even when the service was not running.
+- `LaunchdServiceManager::status` could report `NotInstalled` for a service
+  that was installed but not loaded.
+- Calling `LaunchdServiceManager::stop` on a service that had a `KeepAlive`
+  field would be ignored by `launchd` which would restart it ~10s later.
+- Failures in `LaunchdServiceManager::(install|start|uninstall)` were
+  swallowed. They are now propagated up.
+- The library panicked if there was no `$HOME` directory. An error is now
+  returned.
+
 ### Changed
 
 - **BREAKING CHANGE**: `LaunchdServiceManager`'s `user` field has been replaced
-  with a `domain: ServiceDomain`. `manager.level() != LaunchdServiceDomain::System` is equivalent.
+  with a `domain: LaunchdServiceDomain`. Checking the `user` flag should be
+  done via `manager.level() == ServiceLevel::User`.
 - **BREAKING CHANGE**: Launchd services are managed with `bootstrap`,
   `bootout`, `kickstart` and `print` against an explicit domain (`system`, or
   `gui/<uid>` for user services) instead of the legacy `load`,
   `unload`, `remove`, `start` and `stop` subcommands
 - `launchctl`'s path is now hard-coded to `/bin/launchctl`.
+- Many `launchd` operations now block (sometimes up to 5m). They have been
+  documented as such. Please wrap them in an async runtime as necessary.
 - Reflect the true MSRV of 1.75.
 - Depend on `which` 8.
 - Depend on `xml` 1, the new name of `xml-rs`.
