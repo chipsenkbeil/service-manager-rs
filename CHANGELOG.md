@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING CHANGE**: `launchd` older than 10.10 (Yosemite), as well as the
+  open source `launchd` are no longer supported.
 - **BREAKING CHANGE**: `LaunchdServiceManager`'s `user` field has been replaced
   with a `domain: LaunchdServiceDomain`. Checking the `user` flag should be
   done via `manager.level() == ServiceLevel::User`.
