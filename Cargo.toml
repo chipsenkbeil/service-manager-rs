@@ -22,18 +22,23 @@ encoding = [
 members = ["system-tests"]
 
 [dependencies]
-cfg-if = "1.0"
+cfg-if = "1"
 clap = { version = "4", features = ["derive"], optional = true }
-dirs = "4.0"
+dirs = "4"
 log = "0.4"
-plist = "1.1"
+plist = { version = "1", default-features = false }
 serde = { version = "1", features = ["derive"], optional = true }
-which = "4.0"
-xml-rs = "0.8.19"
+which = "8"
+xml-rs = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
 encoding_rs = { version = "0.8", optional = true }
-encoding-utils = { version ="0.1", optional = true }
+encoding-utils = { version = "0.1", optional = true }
 
 [dev-dependencies]
-assert_fs = "1.0.13"
-indoc = "2.0.4"
-predicates = "3.0.4"
+assert_fs = "1"
+indoc = "2"
+predicates = "3"

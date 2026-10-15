@@ -76,17 +76,26 @@ pub fn wrap_output(output: Output) -> std::io::Result<Output> {
 
 #[cfg(feature = "encoding")]
 pub mod encoding {
-    use encoding_rs::UTF_8;
-    #[cfg(windows)]
-    use encoding_utils::windows::current_acp_encoding_no_replacement;
     use std::borrow::Cow;
     use std::io::{Error, ErrorKind};
-    /// probe the encoding of a bytes slice, and decode it to a string(utf-8)
+
+    /// Decode `bytes` as per the system's encoding.
     pub fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
         #[cfg(windows)]
-        let encoding = current_acp_encoding_no_replacement().unwrap_or(UTF_8);
+        let decoded = decode_win(bytes);
+
         #[cfg(not(windows))]
-        let encoding = &UTF_8;
+        let decoded = decode_posix(bytes);
+
+        decoded
+    }
+
+    #[cfg(windows)]
+    fn decode_win(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
+        use encoding_rs::UTF_8;
+        use encoding_utils::windows::current_acp_encoding_no_replacement;
+
+        let encoding = current_acp_encoding_no_replacement().unwrap_or(UTF_8);
 
         let (result, _, had_errors) = encoding.decode(bytes);
         if had_errors {
@@ -97,5 +106,12 @@ pub mod encoding {
         } else {
             Ok(result)
         }
+    }
+
+    #[cfg(not(windows))]
+    fn decode_posix(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
+        std::str::from_utf8(bytes)
+            .map(Cow::Borrowed)
+            .map_err(|err| Error::new(ErrorKind::InvalidData, err))
     }
 }

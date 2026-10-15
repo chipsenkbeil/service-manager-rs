@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The crate now depends on [`which`](https://docs.rs/which/latest/which/)
+  version 8.
+- `encoding_rs` and `encoding-utils` are now only dependencies under Windows.
+
 ## [0.11.0] - 2026-02-18
 
 ### Changed
