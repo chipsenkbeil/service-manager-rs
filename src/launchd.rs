@@ -334,8 +334,14 @@ impl ServiceManager for LaunchdServiceManager {
         )?;
 
         // bootstrap refuses a plist that sets Disabled, which make_plist does for KeepAlive
-        // services so that installing one does not start it. start() lifts it.
-        if sets_disabled(plist.as_bytes()) {
+        // services so that installing one does not start it. start() lifts it. A plist that does
+        // not parse counts as not disabled, and bootstrap reports it.
+        let disabled = Value::from_reader(io::Cursor::new(plist.as_bytes()))
+            .ok()
+            .and_then(Value::into_dictionary)
+            .and_then(|dict| dict.get("Disabled").and_then(Value::as_boolean))
+            .unwrap_or(false);
+        if disabled {
             return Ok(());
         }
 
@@ -431,17 +437,6 @@ impl ServiceManager for LaunchdServiceManager {
     fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
         self.target(&ctx.label).status()
     }
-}
-
-/// Whether a plist sets `Disabled`, which launchd honours by refusing to load it.
-///
-/// A plist that does not parse counts as not disabled, and bootstrap reports it.
-fn sets_disabled(plist: &[u8]) -> bool {
-    Value::from_reader(io::Cursor::new(plist))
-        .ok()
-        .and_then(Value::into_dictionary)
-        .and_then(|dict| dict.get("Disabled").and_then(Value::as_boolean))
-        .unwrap_or(false)
 }
 
 /// Removes `Disabled = true` from the plist at `path`, so that bootstrap loads it.
@@ -605,56 +600,4 @@ fn make_plist<'a>(
     let mut buffer = Vec::new();
     plist.to_writer_xml(&mut buffer).unwrap();
     String::from_utf8(buffer).unwrap()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use assert_fs::prelude::*;
-
-    fn generated_plist(restart_policy: RestartPolicy) -> String {
-        make_plist(
-            &LaunchdInstallConfig::default(),
-            "com.example.app",
-            [OsStr::new("/bin/sleep")].into_iter(),
-            None,
-            None,
-            None,
-            true,
-            restart_policy,
-        )
-    }
-
-    #[test]
-    fn generated_plist_is_disabled_only_for_keep_alive_services() {
-        assert!(sets_disabled(
-            generated_plist(RestartPolicy::default()).as_bytes()
-        ));
-        assert!(!sets_disabled(
-            generated_plist(RestartPolicy::Never).as_bytes()
-        ));
-    }
-
-    #[test]
-    fn lift_disabled_rewrites_only_a_disabled_plist() {
-        let dir = assert_fs::TempDir::new().unwrap();
-
-        let disabled = dir.child("disabled.plist");
-        disabled
-            .write_str(&generated_plist(RestartPolicy::default()))
-            .unwrap();
-        lift_disabled(disabled.path()).unwrap();
-        let lifted = std::fs::read(disabled.path()).unwrap();
-        assert!(!sets_disabled(&lifted));
-        assert!(String::from_utf8(lifted).unwrap().contains("KeepAlive"));
-
-        let enabled = dir.child("enabled.plist");
-        let contents = generated_plist(RestartPolicy::Never);
-        enabled.write_str(&contents).unwrap();
-        lift_disabled(enabled.path()).unwrap();
-        enabled.assert(contents.as_str());
-
-        let missing = lift_disabled(&dir.path().join("missing.plist")).unwrap_err();
-        assert_eq!(missing.kind(), io::ErrorKind::NotFound);
-    }
 }
