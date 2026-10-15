@@ -59,9 +59,9 @@ pub enum ServiceDomain {
     ///
     /// launchd loads a plist into this domain only if it sets `LimitLoadToSessionType` to
     /// `Background`; bootstrap fails with EIO otherwise.
-    User(libc::uid_t),
+    User(u32),
     /// `gui/<uid>/` services.
-    Gui(libc::uid_t),
+    Gui(u32),
     /// `system/` services.
     #[default]
     System,

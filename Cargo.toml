@@ -36,7 +36,7 @@ xml = "1"
 encoding_rs = { version = "0.8", optional = true }
 encoding-utils = { version = "0.1", optional = true }
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]

@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 #[doc = include_str!("../README.md")]
-#[cfg(all(doctest, target_os = "macos"))]
+#[cfg(doctest)]
 pub struct ReadmeDoctests;
 
 use std::{
@@ -12,7 +12,6 @@ use std::{
 };
 
 mod kind;
-#[cfg(target_os = "macos")]
 mod launchd;
 mod openrc;
 mod rcd;
@@ -23,7 +22,6 @@ mod utils;
 mod winsw;
 
 pub use kind::*;
-#[cfg(target_os = "macos")]
 pub use launchd::*;
 pub use openrc::*;
 pub use rcd::*;

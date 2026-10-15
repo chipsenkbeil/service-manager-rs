@@ -101,7 +101,7 @@ pub(crate) mod encoding {
 }
 
 /// Safe wrappers over the POSIX calls the launchd manager makes.
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 pub mod posix {
     use std::{
         ffi::{CStr, OsStr},
@@ -112,7 +112,7 @@ pub mod posix {
     };
 
     /// The calling process's real user id.
-    pub fn getuid() -> libc::uid_t {
+    pub fn getuid() -> u32 {
         // SAFETY: getuid takes no arguments, cannot fail and touches no memory of ours.
         unsafe { libc::getuid() }
     }
@@ -120,7 +120,7 @@ pub mod posix {
     /// The home directory of the user with `uid`, from the password database.
     ///
     /// Fails with `NotFound` when no user has `uid` or the user has no home directory.
-    pub fn home_dir(uid: libc::uid_t) -> io::Result<PathBuf> {
+    pub fn home_dir(uid: u32) -> io::Result<PathBuf> {
         // getpwuid_r reports ERANGE when the entry does not fit, and the buffer doubles up to
         // the cap. Real entries are a few hundred bytes.
         const INITIAL_BUFFER_LEN: usize = 1024;
@@ -177,17 +177,43 @@ pub mod posix {
 
         #[test]
         fn home_dir_reads_the_password_database() {
-            assert_eq!(home_dir(0).unwrap(), PathBuf::from("/var/root"));
+            let root_home = if cfg!(target_os = "macos") {
+                "/var/root"
+            } else {
+                "/root"
+            };
+            assert_eq!(home_dir(0).unwrap(), PathBuf::from(root_home));
         }
 
         #[test]
         fn home_dir_of_a_uid_no_user_has_is_not_found() {
-            // Far above any uid macOS assigns: system accounts sit below 500, local ones start
-            // at 501, and nobody is -2 (4294967294).
-            const UNUSED_UID: libc::uid_t = 4_000_000_000;
+            // Far above any uid macOS or Linux gives an account: nobody is 4294967294 on macOS
+            // and 65534 on Linux.
+            const UNUSED_UID: u32 = 4_000_000_000;
 
             let err = home_dir(UNUSED_UID).unwrap_err();
             assert_eq!(err.kind(), io::ErrorKind::NotFound);
         }
+    }
+}
+
+/// Stand-ins for the POSIX calls on platforms without uids or a password database.
+///
+/// launchd does not run on these platforms, so nothing reaches the system with these values.
+#[cfg(not(unix))]
+pub mod posix {
+    use std::{io, path::PathBuf};
+
+    /// `u32::MAX`, POSIX's `(uid_t)-1`, which names no user.
+    pub fn getuid() -> u32 {
+        u32::MAX
+    }
+
+    /// Always fails with `Unsupported`.
+    pub fn home_dir(_uid: u32) -> io::Result<PathBuf> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "this platform has no password database to look home directories up in",
+        ))
     }
 }
