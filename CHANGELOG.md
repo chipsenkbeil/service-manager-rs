@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New public `LaunchdServiceDomain` answers whether a service runs in the
-  `system`, `gui/` or `user/` launchd domains.
+- `LaunchdServiceDomain` names the launchd domain a `LaunchdServiceManager` acts
+  on: `system`, `gui/<uid>` or `user/<uid>`.
 
 ### Fixed
 
@@ -19,13 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LaunchdServiceManager::status` could misreport a running state for a service
   even when the service was not running.
 - `LaunchdServiceManager::status` could report `NotInstalled` for a service
-  that was installed but not loaded.
-- Calling `LaunchdServiceManager::stop` on a service that had a `KeepAlive`
-  field would be ignored by `launchd` which would restart it ~10s later.
+  that was installed but not loaded, and `Stopped` for a service launchd was
+  still starting.
+- `LaunchdServiceManager::stop` stopped a service with `KeepAlive` set only
+  until launchd restarted it ~10s later.
 - Failures in `LaunchdServiceManager::(install|start|uninstall)` were
   swallowed. They are now propagated up.
-- The library panicked if there was no `$HOME` directory. An error is now
-  returned.
+- A launchd label that is empty, contains `/` or a control character, or is too
+  long for a file name is rejected with `InvalidInput`. A label such as `/tmp/x`
+  wrote and deleted plists outside `LaunchAgents` and `LaunchDaemons`.
+- Launchd user services panicked when no home directory could be found. An
+  error is now returned.
 
 ### Changed
 
@@ -35,10 +39,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING CHANGE**: Launchd services are managed with `bootstrap`,
   `bootout`, `kickstart` and `print` against an explicit domain (`system`, or
   `gui/<uid>` for user services) instead of the legacy `load`,
-  `unload`, `remove`, `start` and `stop` subcommands
+  `unload`, `remove`, `start` and `stop` subcommands.
+- **BREAKING CHANGE**: Launchd user services' plists go in the home directory
+  the password database gives the user instead of `$HOME`, so a process with
+  `HOME` pointed elsewhere still installs into the account's
+  `~/Library/LaunchAgents`.
 - `launchctl`'s path is now hard-coded to `/bin/launchctl`.
-- Many `launchd` operations now block (sometimes up to 5m). They have been
-  documented as such. Please wrap them in an async runtime as necessary.
+- `LaunchdServiceManager`'s `install`, `start`, `stop` and `uninstall` block
+  while launchd tears a job down, and at most 1 minute. `start` also blocks
+  while launchd throttles a job that exited moments ago (`10s` by default).
+  Call them off an async executor's threads, for example with
+  `tokio::task::spawn_blocking`.
+- `LaunchdServiceManager::start` loads a service that is not loaded, such as one
+  `stop` booted out, and returns `NotFound` for a user with no graphical login,
+  where `launchctl load` reported success and loaded nothing.
+- A failed `LaunchdServiceManager::install` removes the plist it wrote.
 - Reflect the true MSRV of 1.75.
 - Depend on `which` 8.
 - Depend on `xml` 1, the new name of `xml-rs`.
