@@ -28,12 +28,14 @@ use launchctl::{
 /// The appropriate file permissions for a PLIST file.
 const PLIST_FILE_PERMISSIONS: u32 = 0o644;
 
-/// How long `install()`, `stop()` and `uninstall()` wait for launchd to boot a service out.
+/// How long `install()`, `stop()` and `uninstall()` wait for launchd to boot a service out, and
+/// `start()` for a teardown already in progress.
 ///
 /// `LaunchCtl::bootout` already bounds the wait by the job's own ExitTimeOut; this caps it for a
-/// plist whose ExitTimeOut is longer than a caller should block. macOS's own daemons go up to
-/// 240s (`com.apple.xsan`).
-const BOOTOUT_TIMEOUT: Duration = Duration::from_secs(300);
+/// plist whose ExitTimeOut is longer than a caller should block. A generated plist leaves
+/// ExitTimeOut at launchd's default (5s), so the cap only binds for a custom plist above 58s,
+/// which then fails with `TimedOut` while launchd is still tearing the job down.
+const BOOTOUT_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// The domain which a service can run.
 ///
@@ -388,6 +390,10 @@ impl ServiceManager for LaunchdServiceManager {
         Ok(LaunchCtl::available())
     }
 
+    /// Installs a service, booting out a loaded copy of it first.
+    ///
+    /// Blocks while launchd tears that copy down, for up to its ExitTimeOut plus 2s (12s when
+    /// ExitTimeOut is 0) and at most 1 minute, then fails with `TimedOut`.
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
         let target = self.target(&ctx.label)?;
         std::fs::create_dir_all(self.plist_dir()?)?;
@@ -442,6 +448,10 @@ impl ServiceManager for LaunchdServiceManager {
         Err(err)
     }
 
+    /// Uninstalls a service, booting it out of its launchd domain and removing its plist.
+    ///
+    /// Blocks while launchd tears the job down, for up to its ExitTimeOut plus 2s (12s when
+    /// ExitTimeOut is 0) and at most 1 minute, then fails with `TimedOut`.
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
         let target = self.target(&ctx.label)?;
         let plist_path = target.plist_path()?;
@@ -454,8 +464,10 @@ impl ServiceManager for LaunchdServiceManager {
 
     /// Starts a service, loading it into its launchd domain first if it is not loaded.
     ///
-    /// Blocks while launchd tears down a job that is being stopped, and while it throttles a job
-    /// that exited less than its ThrottleInterval (`10s` by default) ago.
+    /// Blocks while launchd tears down a job that is being stopped, for up to its ExitTimeOut plus
+    /// 2s (12s when ExitTimeOut is 0) and at most 1 minute, then fails with `TimedOut`. Also
+    /// blocks while launchd throttles a job that exited less than its ThrottleInterval (`10s` by
+    /// default) ago.
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
         let target = self.target(&ctx.label)?;
         let plist_path = target.plist_path()?;
@@ -467,7 +479,8 @@ impl ServiceManager for LaunchdServiceManager {
         // and see whether the job is still loaded afterwards.
         let info = match target.info()? {
             Some(info) if info.state.is_stopping() => {
-                target.wait_until(info.teardown_timeout(), |info| !info.state.is_stopping())?
+                let timeout = info.teardown_timeout().min(BOOTOUT_TIMEOUT);
+                target.wait_until(timeout, |info| !info.state.is_stopping())?
             }
             info => info,
         };
@@ -520,6 +533,9 @@ impl ServiceManager for LaunchdServiceManager {
     ///
     /// The plist stays in place, so launchd loads the service again at the next boot or login
     /// unless the plist sets `Disabled`.
+    ///
+    /// Blocks while launchd tears the job down, for up to its ExitTimeOut plus 2s (12s when
+    /// ExitTimeOut is 0) and at most 1 minute, then fails with `TimedOut`.
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
         let target = self.target(&ctx.label)?;
         match target.bootout(BOOTOUT_TIMEOUT) {
