@@ -1,6 +1,5 @@
 #![doc = include_str!("../README.md")]
 
-// The README's examples use LaunchdServiceManager, which exists only on macOS.
 #[doc = include_str!("../README.md")]
 #[cfg(all(doctest, target_os = "macos"))]
 pub struct ReadmeDoctests;
