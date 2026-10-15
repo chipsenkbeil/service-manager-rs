@@ -107,6 +107,84 @@ impl Display for ServiceDomain {
     }
 }
 
+/// A launchd label that is safe to put in a service target and to name a plist file with.
+struct ServiceName(String);
+
+impl TryFrom<String> for ServiceName {
+    type Error = ServiceNameError;
+
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        // The longest file name APFS and HFS+ accept, in bytes.
+        const NAME_MAX: usize = 255;
+
+        if name.is_empty() {
+            return Err(ServiceNameError::Empty);
+        }
+        if name.contains('/') {
+            return Err(ServiceNameError::Slash(name));
+        }
+        if name.contains(char::is_control) {
+            return Err(ServiceNameError::ControlCharacter(name));
+        }
+        if name.len() + ".plist".len() > NAME_MAX {
+            return Err(ServiceNameError::TooLong(name));
+        }
+
+        Ok(Self(name))
+    }
+}
+
+impl AsRef<str> for ServiceName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for ServiceName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Why a label cannot name a launchd service.
+#[derive(Debug)]
+enum ServiceNameError {
+    /// The label is empty, so its service target would name the whole domain.
+    Empty,
+    /// The label holds a `/`, which ends a service target's label and separates path components.
+    Slash(String),
+    /// The label holds a control character, which `launchctl print` prints unescaped.
+    ControlCharacter(String),
+    /// The label's plist file name is longer than APFS and HFS+ accept.
+    TooLong(String),
+}
+
+impl Error for ServiceNameError {}
+
+impl Display for ServiceNameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServiceNameError::Empty => write!(f, "service label is empty"),
+            ServiceNameError::Slash(name) => write!(f, "service label {name:?} contains a `/`"),
+            ServiceNameError::ControlCharacter(name) => {
+                write!(f, "service label {name:?} contains a control character")
+            }
+            ServiceNameError::TooLong(name) => {
+                write!(
+                    f,
+                    "service label {name:?} is too long for a plist file name"
+                )
+            }
+        }
+    }
+}
+
+impl From<ServiceNameError> for io::Error {
+    fn from(err: ServiceNameError) -> Self {
+        io::Error::new(io::ErrorKind::InvalidInput, err)
+    }
+}
+
 /// A service in a launchd domain, held as the `<domain>/<label>` service target launchctl takes.
 struct ServiceTarget {
     domain: ServiceDomain,
@@ -117,19 +195,20 @@ struct ServiceTarget {
 }
 
 impl ServiceTarget {
-    /// The service `label` in `domain`.
-    pub fn new(domain: ServiceDomain, label: &str) -> Self {
+    /// The service `name` in `domain`.
+    pub fn new(domain: ServiceDomain, name: &ServiceName) -> Self {
         use std::fmt::Write as _;
 
         // The longest domain is `user/4294967295`.
         const MAX_DOMAIN_LEN: usize = 15;
 
-        let mut service_target = String::with_capacity(MAX_DOMAIN_LEN + 1 + label.len());
+        let name = name.as_ref();
+        let mut service_target = String::with_capacity(MAX_DOMAIN_LEN + 1 + name.len());
         write!(service_target, "{domain}").expect("ServiceDomain's Display never fails");
 
         let separator = service_target.len();
         service_target.push('/');
-        service_target.push_str(label);
+        service_target.push_str(name);
 
         Self {
             domain,
@@ -296,8 +375,11 @@ impl LaunchdServiceManager {
     }
 
     /// The service `label` in this manager's domain.
-    fn target(&self, label: &ServiceLabel) -> ServiceTarget {
-        ServiceTarget::new(self.domain, &label.to_qualified_name())
+    ///
+    /// Fails with `InvalidInput` when the label cannot name a launchd service.
+    fn target(&self, label: &ServiceLabel) -> io::Result<ServiceTarget> {
+        let name = ServiceName::try_from(label.to_qualified_name())?;
+        Ok(ServiceTarget::new(self.domain, &name))
     }
 }
 
@@ -307,14 +389,14 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn install(&self, ctx: ServiceInstallCtx) -> io::Result<()> {
+        let target = self.target(&ctx.label)?;
         std::fs::create_dir_all(self.plist_dir()?)?;
 
-        let qualified_name = ctx.label.to_qualified_name();
         let plist = match ctx.contents {
             Some(contents) => contents,
             _ => make_plist(
                 &self.config.install,
-                &qualified_name,
+                target.label(),
                 ctx.cmd_iter(),
                 ctx.username.clone(),
                 ctx.working_directory.clone(),
@@ -324,7 +406,6 @@ impl ServiceManager for LaunchdServiceManager {
             ),
         };
 
-        let target = ServiceTarget::new(self.domain, &qualified_name);
         let plist_path = target.plist_path()?;
         target.bootout_if_loaded()?;
         utils::write_file(
@@ -362,7 +443,7 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
-        let target = self.target(&ctx.label);
+        let target = self.target(&ctx.label)?;
         let plist_path = target.plist_path()?;
         target.bootout_if_loaded()?;
         std::fs::remove_file(&plist_path).or_else(|err| match err.kind() {
@@ -376,7 +457,7 @@ impl ServiceManager for LaunchdServiceManager {
     /// Blocks while launchd tears down a job that is being stopped, and while it throttles a job
     /// that exited less than its ThrottleInterval (`10s` by default) ago.
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
-        let target = self.target(&ctx.label);
+        let target = self.target(&ctx.label)?;
         let plist_path = target.plist_path()?;
         if !plist_path.try_exists()? {
             return Err(not_installed(&ctx.label));
@@ -440,7 +521,7 @@ impl ServiceManager for LaunchdServiceManager {
     /// The plist stays in place, so launchd loads the service again at the next boot or login
     /// unless the plist sets `Disabled`.
     fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
-        let target = self.target(&ctx.label);
+        let target = self.target(&ctx.label)?;
         match target.bootout(BOOTOUT_TIMEOUT) {
             Ok(()) => Ok(()),
             Err(LaunchCtlBootoutError::NotLoaded) if target.plist_path()?.try_exists()? => Ok(()),
@@ -466,7 +547,7 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
-        self.target(&ctx.label).status()
+        self.target(&ctx.label)?.status()
     }
 }
 
@@ -611,4 +692,37 @@ fn make_plist<'a>(
     let mut buffer = Vec::new();
     plist.to_writer_xml(&mut buffer).unwrap();
     String::from_utf8(buffer).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A label that slipped through would point a service target at the wrong service or the
+    // whole domain, or put the plist outside the domain's plist directory.
+    #[test]
+    fn service_name_rejects_labels_launchctl_or_the_filesystem_would_misread() {
+        let too_long = "x".repeat(250);
+        for label in [
+            "",
+            "/",
+            "/tmp/example",
+            "../escape",
+            "com.example/other",
+            "com.example.app\n\tstate = running",
+            &too_long,
+        ] {
+            let err = ServiceName::try_from(label.to_owned())
+                .err()
+                .unwrap_or_else(|| panic!("label {label:?} was accepted"));
+            assert_eq!(io::Error::from(err).kind(), io::ErrorKind::InvalidInput);
+        }
+
+        for label in ["com.example.app", &"x".repeat(249)] {
+            assert!(
+                ServiceName::try_from(label.to_owned()).is_ok(),
+                "label {label:?} was rejected"
+            );
+        }
+    }
 }
