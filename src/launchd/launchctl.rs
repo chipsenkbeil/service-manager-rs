@@ -462,11 +462,15 @@ impl LaunchCtl {
 
         // A process may be in progress of being booted in. We have to make sure it's fully loaded
         // before we try to bootout otherwise bootout will yell at us.
-        let Some(status) = Self::wait_until(service_target, BOOTUP_TIMEOUT.min(timeout), |info| {
+        let status = match Self::wait_until(service_target, BOOTUP_TIMEOUT.min(timeout), |info| {
             !info.state.is_booting()
-        })?
-        else {
-            return Err(LaunchCtlBootoutError::NotLoaded);
+        }) {
+            Ok(Some(status)) => status,
+            // A domain that does not exist, such as gui/<uid> with no graphical login, has no jobs.
+            Ok(None) | Err(LaunchCtlWaitError::Print(ServicePrintoutError::DomainNotFound(_))) => {
+                return Err(LaunchCtlBootoutError::NotLoaded);
+            }
+            Err(err) => return Err(err.into()),
         };
 
         // Well now we now that the service is not in the booting up state, we can try to boot it
