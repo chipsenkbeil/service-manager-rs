@@ -387,10 +387,34 @@ impl ServiceManager for LaunchdServiceManager {
             return target.kickstart();
         }
 
-        lift_disabled(&plist_path).map_err(|err| match err.kind() {
+        // bootstrap refuses a plist that sets Disabled, so drop it from a plist install() left
+        // disabled. A plist a concurrent uninstall() removed counts as not installed.
+        let not_installed_if_missing = |err: io::Error| match err.kind() {
             io::ErrorKind::NotFound => not_installed(&ctx.label),
             _ => err,
-        })?;
+        };
+        let mut plist = Value::from_reader(io::Cursor::new(
+            std::fs::read(&plist_path).map_err(not_installed_if_missing)?,
+        ))
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        let was_disabled = plist
+            .as_dictionary_mut()
+            .and_then(|dict| dict.remove("Disabled"))
+            .and_then(|disabled| disabled.as_boolean())
+            == Some(true);
+        if was_disabled {
+            let mut buffer = Vec::new();
+            plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
+            // Not created afresh, so a plist a concurrent uninstall() removed stays removed.
+            let mut file = OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&plist_path)
+                .map_err(not_installed_if_missing)?;
+            file.write_all(&buffer)?;
+            file.sync_all()?;
+        }
+
         // A concurrent start() can load the job first, which fails this bootstrap with EIO, and a
         // concurrent uninstall() can remove the plist, so the state afterwards decides.
         let bootstrapped = target.bootstrap(&plist_path);
@@ -437,26 +461,6 @@ impl ServiceManager for LaunchdServiceManager {
     fn status(&self, ctx: crate::ServiceStatusCtx) -> io::Result<crate::ServiceStatus> {
         self.target(&ctx.label).status()
     }
-}
-
-/// Removes `Disabled = true` from the plist at `path`, so that bootstrap loads it.
-fn lift_disabled(path: &Path) -> io::Result<()> {
-    let mut plist = Value::from_reader(io::Cursor::new(std::fs::read(path)?))
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-    let Some(dict) = plist.as_dictionary_mut() else {
-        return Ok(());
-    };
-    if dict.get("Disabled").and_then(Value::as_boolean) != Some(true) {
-        return Ok(());
-    }
-    dict.remove("Disabled");
-
-    let mut buffer = Vec::new();
-    plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
-    // Not created afresh, so a plist a concurrent uninstall() removed stays removed.
-    let mut file = OpenOptions::new().write(true).truncate(true).open(path)?;
-    file.write_all(&buffer)?;
-    file.sync_all()
 }
 
 fn not_installed(label: &ServiceLabel) -> io::Error {
