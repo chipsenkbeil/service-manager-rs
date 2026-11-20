@@ -32,7 +32,6 @@ serde = { version = "1", features = ["derive"], optional = true }
 which = "8"
 xml = "1"
 
-# Elsewhere command output is UTF-8, which std decodes.
 [target.'cfg(windows)'.dependencies]
 encoding_rs = { version = "0.8", optional = true }
 encoding-utils = { version = "0.1", optional = true }
