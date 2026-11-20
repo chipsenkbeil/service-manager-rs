@@ -203,7 +203,7 @@ impl Cli {
 
                 handle
                     .join()
-                    .map_err(|_| io::Error::new(io::ErrorKind::Other, "Thread join failed"))?
+                    .map_err(|_| io::Error::other("Thread join failed"))?
             }
         }
     }
@@ -259,14 +259,13 @@ mod echo_service {
     impl Config {
         pub fn save(&self) -> io::Result<()> {
             let mut bytes = Vec::new();
-            serde_json::to_writer(&mut bytes, self)
-                .map_err(|x| io::Error::new(io::ErrorKind::Other, x))?;
+            serde_json::to_writer(&mut bytes, self).map_err(io::Error::other)?;
             std::fs::write(Self::config_file(), bytes)
         }
 
         pub fn load() -> io::Result<Self> {
             let bytes = std::fs::read(Self::config_file())?;
-            serde_json::from_slice(&bytes).map_err(|x| io::Error::new(io::ErrorKind::Other, x))
+            serde_json::from_slice(&bytes).map_err(io::Error::other)
         }
 
         /// Stored next to the service exe
@@ -278,8 +277,7 @@ mod echo_service {
     }
 
     pub fn run() -> io::Result<()> {
-        service_dispatcher::start(SERVICE_NAME, ffi_service_main)
-            .map_err(|x| io::Error::new(io::ErrorKind::Other, x))
+        service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(io::Error::other)
     }
 
     define_windows_service!(ffi_service_main, echo_service_main);

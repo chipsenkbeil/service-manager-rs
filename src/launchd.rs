@@ -23,17 +23,11 @@ pub struct LaunchdConfig {
 }
 
 /// Configuration settings tied to launchd services during installation
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct LaunchdInstallConfig {
     /// Launchd-specific keep-alive setting. If `Some`, this takes precedence over the generic
     /// `RestartPolicy` in `ServiceInstallCtx`. If `None`, the generic policy is used.
     pub keep_alive: Option<bool>,
-}
-
-impl Default for LaunchdInstallConfig {
-    fn default() -> Self {
-        Self { keep_alive: None }
-    }
 }
 
 /// Implementation of [`ServiceManager`] for MacOS's [Launchd](https://en.wikipedia.org/wiki/Launchd)
@@ -97,7 +91,7 @@ impl ServiceManager for LaunchdServiceManager {
         match which::which(LAUNCHCTL) {
             Ok(_) => Ok(true),
             Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -185,9 +179,7 @@ impl ServiceManager for LaunchdServiceManager {
             }
 
             let mut buffer = Vec::new();
-            plist
-                .to_writer_xml(&mut buffer)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
             utils::write_file(plist_path.as_path(), &buffer, PLIST_FILE_PERMISSIONS)?;
 
             let _ = launchctl("unload", plist_path.to_string_lossy().as_ref());
@@ -252,24 +244,18 @@ impl ServiceManager for LaunchdServiceManager {
                         }
                     } else {
                         // We have access to the full service label, so it impossible to get the failed status, or it must be input error.
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!(
-                                "Command failed with exit code {}: {}",
-                                output.status.code().unwrap_or(-1),
-                                out
-                            ),
-                        ));
-                    }
-                } else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!(
+                        return Err(io::Error::other(format!(
                             "Command failed with exit code {}: {}",
                             output.status.code().unwrap_or(-1),
-                            String::from_utf8_lossy(&output.stderr)
-                        ),
-                    ));
+                            out
+                        )));
+                    }
+                } else {
+                    return Err(io::Error::other(format!(
+                        "Command failed with exit code {}: {}",
+                        output.status.code().unwrap_or(-1),
+                        String::from_utf8_lossy(&output.stderr)
+                    )));
                 }
             }
             out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
@@ -312,6 +298,7 @@ fn user_agent_dir_path() -> io::Result<PathBuf> {
         .join("LaunchAgents"))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_plist<'a>(
     config: &LaunchdInstallConfig,
     label: &str,
@@ -367,7 +354,7 @@ fn make_plist<'a>(
             }
             RestartPolicy::OnFailure {
                 delay_secs,
-                max_retries: _, // TODO: no direct launchd equivalent
+                max_retries: _,      // TODO: no direct launchd equivalent
                 reset_after_secs: _, // TODO: no direct launchd equivalent
             } => {
                 // Create KeepAlive dictionary with SuccessfulExit=false

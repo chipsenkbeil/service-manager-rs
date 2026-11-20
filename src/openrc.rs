@@ -45,7 +45,7 @@ impl ServiceManager for OpenRcServiceManager {
         match which::which(RC_SERVICE) {
             Ok(_) => Ok(true),
             Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -56,7 +56,9 @@ impl ServiceManager for OpenRcServiceManager {
             RestartPolicy::Never => {
                 // This is fine, OpenRC services don't restart by default
             }
-            RestartPolicy::Always { .. } | RestartPolicy::OnFailure { .. } | RestartPolicy::OnSuccess { .. } => {
+            RestartPolicy::Always { .. }
+            | RestartPolicy::OnFailure { .. }
+            | RestartPolicy::OnSuccess { .. } => {
                 log::warn!(
                     "OpenRC does not support automatic restart policies; service '{}' will not restart automatically",
                     ctx.label.to_script_name()
@@ -101,7 +103,7 @@ impl ServiceManager for OpenRcServiceManager {
         let _ = rc_update("del", &ctx.label.to_script_name(), [OsStr::new("default")]);
 
         // Uninstall service by removing the script
-        std::fs::remove_file(service_dir_path().join(&ctx.label.to_script_name()))
+        std::fs::remove_file(service_dir_path().join(ctx.label.to_script_name()))
     }
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
@@ -139,26 +141,20 @@ impl ServiceManager for OpenRcServiceManager {
                 if stdio.contains("does not exist") {
                     Ok(crate::ServiceStatus::NotInstalled)
                 } else {
-                    Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!(
-                            "Failed to get status of service {}: {}",
-                            ctx.label.to_script_name(),
-                            stdio
-                        ),
-                    ))
+                    Err(io::Error::other(format!(
+                        "Failed to get status of service {}: {}",
+                        ctx.label.to_script_name(),
+                        stdio
+                    )))
                 }
             }
             Some(0) => Ok(crate::ServiceStatus::Running),
             Some(3) => Ok(crate::ServiceStatus::Stopped(None)),
-            _ => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "Failed to get status of service {}: {}",
-                    ctx.label.to_script_name(),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            )),
+            _ => Err(io::Error::other(format!(
+                "Failed to get status of service {}: {}",
+                ctx.label.to_script_name(),
+                String::from_utf8_lossy(&output.stderr)
+            ))),
         }
     }
 }
@@ -213,7 +209,7 @@ fn rc_update<'a>(
             })
             .unwrap_or_else(|| format!("Failed to {cmd} {service}"));
 
-        Err(io::Error::new(io::ErrorKind::Other, msg))
+        Err(io::Error::other(msg))
     }
 }
 
