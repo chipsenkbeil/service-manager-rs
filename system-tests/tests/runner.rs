@@ -21,11 +21,10 @@ fn wait() {
     thread::sleep(WAIT_PERIOD);
 }
 
-/// Directory a service running as another user can reach.
-///
-/// Not `std::env::temp_dir()`: under `sudo` on macOS that is root's `0700` Darwin temp dir.
 fn shared_temp_dir() -> PathBuf {
     if cfg!(unix) {
+        // When running under `sudo` on macOS, this uses root's temp dir, as opposed to the
+        // "everyone-writable" /tmp.
         PathBuf::from("/tmp")
     } else {
         std::env::temp_dir()
@@ -457,7 +456,10 @@ pub fn run_failure_restart_test(manager: impl Into<TypedServiceManager>, max_ret
     // Read the log file and count start markers
     eprintln!("Checking log file for start markers");
     let log_contents = std::fs::read_to_string(&log_file_path).unwrap();
-    let start_count = log_contents.lines().filter(|l| l.contains("STARTED")).count();
+    let start_count = log_contents
+        .lines()
+        .filter(|l| l.contains("STARTED"))
+        .count();
     let expected_starts = (max_retries + 1) as usize;
     eprintln!(
         "Found {} STARTED markers (expected {})",
