@@ -223,7 +223,7 @@ impl ServiceManager for LaunchdServiceManager {
         // Due to we could not get the status of a service via a service label, so we have to run this command twice
         // in first time, if there is a service exists, the output will advice us a full service label with a prefix.
         // Or it will return nothing, it means the service is not installed(not exists).
-        let mut out: Cow<str> = Cow::Borrowed("");
+        let mut out: Cow<'_, str> = Cow::Borrowed("");
         for i in 0..2 {
             let output = launchctl("print", &service_name)?;
             if !output.status.success() {

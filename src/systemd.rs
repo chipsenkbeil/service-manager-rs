@@ -43,7 +43,7 @@ pub enum SystemdServiceRestartType {
 }
 
 impl fmt::Display for SystemdServiceRestartType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::No => write!(f, "no"),
             Self::Always => write!(f, "always"),

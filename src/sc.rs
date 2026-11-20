@@ -19,7 +19,7 @@ mod shell_escape {
     use std::{borrow::Cow, ffi::OsStr};
 
     /// When not on windows, this will do nothing but return the input str
-    pub fn escape(s: Cow<'_, OsStr>) -> Cow<'_, OsStr> {
+    pub(super) fn escape(s: Cow<'_, OsStr>) -> Cow<'_, OsStr> {
         s
     }
 }

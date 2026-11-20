@@ -7,7 +7,7 @@ use std::{
 };
 
 /// Writes/overwrites a file, assigning the permissions of `mode` if on a unix system
-pub fn write_file(path: &Path, data: &[u8], _mode: u32) -> io::Result<()> {
+pub(crate) fn write_file(path: &Path, data: &[u8], _mode: u32) -> io::Result<()> {
     let mut opts = OpenOptions::new();
     opts.create(true).write(true).truncate(true);
 
@@ -26,7 +26,7 @@ pub fn write_file(path: &Path, data: &[u8], _mode: u32) -> io::Result<()> {
 
 /// Warp the output of a command in a `std::io::Result` if the command failed
 #[cfg(not(feature = "encoding"))]
-pub fn wrap_output(output: Output) -> std::io::Result<Output> {
+pub(crate) fn wrap_output(output: Output) -> std::io::Result<Output> {
     if output.status.success() {
         Ok(output)
     } else {
@@ -47,7 +47,7 @@ pub fn wrap_output(output: Output) -> std::io::Result<Output> {
 
 /// Warp the output of a command in a `std::io::Result` if the command failed
 #[cfg(feature = "encoding")]
-pub fn wrap_output(output: Output) -> std::io::Result<Output> {
+pub(crate) fn wrap_output(output: Output) -> std::io::Result<Output> {
     use encoding::decode;
 
     if output.status.success() {
@@ -69,14 +69,14 @@ pub fn wrap_output(output: Output) -> std::io::Result<Output> {
 }
 
 #[cfg(feature = "encoding")]
-pub mod encoding {
+pub(crate) mod encoding {
     use encoding_rs::UTF_8;
     #[cfg(windows)]
     use encoding_utils::windows::current_acp_encoding_no_replacement;
     use std::borrow::Cow;
     use std::io::{Error, ErrorKind};
     /// probe the encoding of a bytes slice, and decode it to a string(utf-8)
-    pub fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
+    pub(crate) fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
         #[cfg(windows)]
         let encoding = current_acp_encoding_no_replacement().unwrap_or(UTF_8);
         #[cfg(not(windows))]

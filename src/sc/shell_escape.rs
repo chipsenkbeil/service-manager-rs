@@ -12,19 +12,19 @@ use std::os::windows::ffi::{OsStrExt, OsStringExt};
 
 /// Common UTF-16 code points.
 mod utf16 {
-    pub const DOUBLEQUOTE: u16 = '"' as u16;
-    pub const BACKSLASH: u16 = '\\' as u16;
-    pub const SPACE: u16 = ' ' as u16;
-    pub const LINEFEED: u16 = '\n' as u16;
-    pub const HTAB: u16 = '\t' as u16;
-    pub const VTAB: u16 = 0x000B; // '\v'
+    pub(super) const DOUBLEQUOTE: u16 = '"' as u16;
+    pub(super) const BACKSLASH: u16 = '\\' as u16;
+    pub(super) const SPACE: u16 = ' ' as u16;
+    pub(super) const LINEFEED: u16 = '\n' as u16;
+    pub(super) const HTAB: u16 = '\t' as u16;
+    pub(super) const VTAB: u16 = 0x000B; // '\v'
 }
 
 /// Loselessly escape shell arguments on Windows.
 ///
 /// Inspired by https://blogs.msdn.microsoft.com/twistylittlepassagesallalike/2011/04/23/everyone-quotes-command-line-arguments-the-wrong-way/.
 /// Heavily based on https://github.com/sfackler/shell-escape
-pub fn escape(s: Cow<'_, OsStr>) -> Cow<'_, OsStr> {
+pub(super) fn escape(s: Cow<'_, OsStr>) -> Cow<'_, OsStr> {
     static ESCAPE_CHARS: &[u16] = &[
         utf16::DOUBLEQUOTE,
         utf16::SPACE,

@@ -38,3 +38,20 @@ encoding-utils = { version ="0.1", optional = true }
 assert_fs = "1.0.13"
 indoc = "2.0.4"
 predicates = "3.0.4"
+
+# Package-level rather than workspace-level: system-tests panics and prints by design.
+[lints.rust]
+missing_debug_implementations = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unreachable_pub = "warn"
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "warn"
+expect_used = "warn"
+panic = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+todo = "warn"
+unimplemented = "warn"
+unwrap_used = "warn"
