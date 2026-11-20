@@ -29,7 +29,7 @@ dirs = "4.0"
 log = "0.4"
 plist = "1.1"
 serde = { version = "1", features = ["derive"], optional = true }
-which = "4.0"
+which = "8"
 xml-rs = "0.8.19"
 encoding_rs = { version = "0.8", optional = true }
 encoding-utils = { version ="0.1", optional = true }

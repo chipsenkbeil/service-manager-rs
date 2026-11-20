@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Reflect the true MSRV of 1.75.
+- Depend on `which` 8.
 
 ### Fixed
 
