@@ -23,17 +23,11 @@ pub struct LaunchdConfig {
 }
 
 /// Configuration settings tied to launchd services during installation
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct LaunchdInstallConfig {
     /// Launchd-specific keep-alive setting. If `Some`, this takes precedence over the generic
     /// `RestartPolicy` in `ServiceInstallCtx`. If `None`, the generic policy is used.
     pub keep_alive: Option<bool>,
-}
-
-impl Default for LaunchdInstallConfig {
-    fn default() -> Self {
-        Self { keep_alive: None }
-    }
 }
 
 /// Implementation of [`ServiceManager`] for MacOS's [Launchd](https://en.wikipedia.org/wiki/Launchd)
@@ -81,14 +75,14 @@ impl LaunchdServiceManager {
         }
     }
 
-    fn get_plist_path(&self, qualified_name: String) -> PathBuf {
+    fn get_plist_path(&self, qualified_name: String) -> io::Result<PathBuf> {
         let dir_path = if self.user {
-            user_agent_dir_path().unwrap()
+            user_agent_dir_path()?
         } else {
             global_daemon_dir_path()
         };
 
-        dir_path.join(format!("{}.plist", qualified_name))
+        Ok(dir_path.join(format!("{}.plist", qualified_name)))
     }
 }
 
@@ -97,7 +91,7 @@ impl ServiceManager for LaunchdServiceManager {
         match which::which(LAUNCHCTL) {
             Ok(_) => Ok(true),
             Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -113,8 +107,8 @@ impl ServiceManager for LaunchdServiceManager {
         let qualified_name = ctx.label.to_qualified_name();
         let plist_path = dir_path.join(format!("{}.plist", qualified_name));
         let plist = match ctx.contents {
-            Some(contents) => contents,
-            _ => make_plist(
+            Some(contents) => contents.into_bytes(),
+            _ => plist_to_xml(&make_plist(
                 &self.config.install,
                 &qualified_name,
                 ctx.cmd_iter(),
@@ -123,7 +117,7 @@ impl ServiceManager for LaunchdServiceManager {
                 ctx.environment.clone(),
                 ctx.autostart,
                 ctx.restart_policy,
-            ),
+            ))?,
         };
 
         // Unload old service first if it exists
@@ -131,11 +125,7 @@ impl ServiceManager for LaunchdServiceManager {
             let _ = wrap_output(launchctl("remove", ctx.label.to_qualified_name().as_str())?);
         }
 
-        utils::write_file(
-            plist_path.as_path(),
-            plist.as_bytes(),
-            PLIST_FILE_PERMISSIONS,
-        )?;
+        utils::write_file(plist_path.as_path(), &plist, PLIST_FILE_PERMISSIONS)?;
 
         // Load the service.
         // Services with KeepAlive configured will have Disabled=true set, preventing auto-start
@@ -147,7 +137,7 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
-        let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
+        let plist_path = self.get_plist_path(ctx.label.to_qualified_name())?;
         // Service might already be removed (if it has "KeepAlive")
         let _ = wrap_output(launchctl("remove", ctx.label.to_qualified_name().as_str())?);
         let _ = std::fs::remove_file(plist_path);
@@ -156,7 +146,7 @@ impl ServiceManager for LaunchdServiceManager {
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
         let qualified_name = ctx.label.to_qualified_name();
-        let plist_path = self.get_plist_path(qualified_name.clone());
+        let plist_path = self.get_plist_path(qualified_name.clone())?;
 
         if !plist_path.exists() {
             return Err(io::Error::new(
@@ -184,11 +174,11 @@ impl ServiceManager for LaunchdServiceManager {
                 dict.remove("Disabled");
             }
 
-            let mut buffer = Vec::new();
-            plist
-                .to_writer_xml(&mut buffer)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-            utils::write_file(plist_path.as_path(), &buffer, PLIST_FILE_PERMISSIONS)?;
+            utils::write_file(
+                plist_path.as_path(),
+                &plist_to_xml(&plist)?,
+                PLIST_FILE_PERMISSIONS,
+            )?;
 
             let _ = launchctl("unload", plist_path.to_string_lossy().as_ref());
             wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
@@ -231,7 +221,7 @@ impl ServiceManager for LaunchdServiceManager {
         // Due to we could not get the status of a service via a service label, so we have to run this command twice
         // in first time, if there is a service exists, the output will advice us a full service label with a prefix.
         // Or it will return nothing, it means the service is not installed(not exists).
-        let mut out: Cow<str> = Cow::Borrowed("");
+        let mut out: Cow<'_, str> = Cow::Borrowed("");
         for i in 0..2 {
             let output = launchctl("print", &service_name)?;
             if !output.status.success() {
@@ -252,24 +242,18 @@ impl ServiceManager for LaunchdServiceManager {
                         }
                     } else {
                         // We have access to the full service label, so it impossible to get the failed status, or it must be input error.
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!(
-                                "Command failed with exit code {}: {}",
-                                output.status.code().unwrap_or(-1),
-                                out
-                            ),
-                        ));
-                    }
-                } else {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        format!(
+                        return Err(io::Error::other(format!(
                             "Command failed with exit code {}: {}",
                             output.status.code().unwrap_or(-1),
-                            String::from_utf8_lossy(&output.stderr)
-                        ),
-                    ));
+                            out
+                        )));
+                    }
+                } else {
+                    return Err(io::Error::other(format!(
+                        "Command failed with exit code {}: {}",
+                        output.status.code().unwrap_or(-1),
+                        String::from_utf8_lossy(&output.stderr)
+                    )));
                 }
             }
             out = Cow::Owned(String::from_utf8_lossy(&output.stdout).to_string());
@@ -312,6 +296,7 @@ fn user_agent_dir_path() -> io::Result<PathBuf> {
         .join("LaunchAgents"))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_plist<'a>(
     config: &LaunchdInstallConfig,
     label: &str,
@@ -321,7 +306,7 @@ fn make_plist<'a>(
     environment: Option<Vec<(String, String)>>,
     autostart: bool,
     restart_policy: RestartPolicy,
-) -> String {
+) -> Value {
     let mut dict = Dictionary::new();
 
     dict.insert("Label".to_string(), Value::String(label.to_string()));
@@ -367,7 +352,7 @@ fn make_plist<'a>(
             }
             RestartPolicy::OnFailure {
                 delay_secs,
-                max_retries: _, // TODO: no direct launchd equivalent
+                max_retries: _,      // TODO: no direct launchd equivalent
                 reset_after_secs: _, // TODO: no direct launchd equivalent
             } => {
                 // Create KeepAlive dictionary with SuccessfulExit=false
@@ -441,9 +426,11 @@ fn make_plist<'a>(
         dict.insert("Disabled".to_string(), Value::Boolean(true));
     }
 
-    let plist = Value::Dictionary(dict);
+    Value::Dictionary(dict)
+}
 
+fn plist_to_xml(plist: &Value) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
-    plist.to_writer_xml(&mut buffer).unwrap();
-    String::from_utf8(buffer).unwrap()
+    plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
+    Ok(buffer)
 }

@@ -20,7 +20,7 @@ pub struct SystemdConfig {
 }
 
 /// Configuration settings tied to systemd services during installation
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct SystemdInstallConfig {
     pub start_limit_interval_sec: Option<u32>,
     pub start_limit_burst: Option<u32>,
@@ -30,19 +30,9 @@ pub struct SystemdInstallConfig {
     pub restart_sec: Option<u32>,
 }
 
-impl Default for SystemdInstallConfig {
-    fn default() -> Self {
-        Self {
-            start_limit_interval_sec: None,
-            start_limit_burst: None,
-            restart: None,
-            restart_sec: None,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub enum SystemdServiceRestartType {
+    #[default]
     No,
     Always,
     OnSuccess,
@@ -52,14 +42,8 @@ pub enum SystemdServiceRestartType {
     OnWatch,
 }
 
-impl Default for SystemdServiceRestartType {
-    fn default() -> Self {
-        Self::No
-    }
-}
-
 impl fmt::Display for SystemdServiceRestartType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::No => write!(f, "no"),
             Self::Always => write!(f, "always"),
@@ -123,7 +107,7 @@ impl ServiceManager for SystemdServiceManager {
         match which::which(SYSTEMCTL) {
             Ok(_) => Ok(true),
             Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -217,14 +201,11 @@ impl ServiceManager for SystemdServiceManager {
             Some(4) => Ok(crate::ServiceStatus::NotInstalled),
             Some(3) => Ok(crate::ServiceStatus::Stopped(None)),
             Some(0) => Ok(crate::ServiceStatus::Running),
-            _ => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "Command failed with exit code {}: {}",
-                    output.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            )),
+            _ => Err(io::Error::other(format!(
+                "Command failed with exit code {}: {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            ))),
         }
     }
 }
@@ -330,7 +311,7 @@ fn make_service(
             }
             RestartPolicy::OnFailure {
                 delay_secs,
-                max_retries: _, // TODO: map to StartLimitBurst
+                max_retries: _,      // TODO: map to StartLimitBurst
                 reset_after_secs: _, // TODO: map to StartLimitIntervalSec
             } => {
                 let _ = writeln!(service, "Restart=on-failure");

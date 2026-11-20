@@ -19,7 +19,7 @@ mod shell_escape {
     use std::{borrow::Cow, ffi::OsStr};
 
     /// When not on windows, this will do nothing but return the input str
-    pub fn escape(s: Cow<'_, OsStr>) -> Cow<'_, OsStr> {
+    pub(super) fn escape(s: Cow<'_, OsStr>) -> Cow<'_, OsStr> {
         s
     }
 }
@@ -45,9 +45,10 @@ pub struct ScInstallConfig {
     pub error_severity: WindowsErrorSeverity,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub enum WindowsServiceType {
     /// Service runs in its own process. It does not share an executable file with other services
+    #[default]
     Own,
 
     /// Service runs as a shared process. It shares an executable file with other services
@@ -63,12 +64,6 @@ pub enum WindowsServiceType {
     Rec,
 }
 
-impl Default for WindowsServiceType {
-    fn default() -> Self {
-        Self::Own
-    }
-}
-
 impl fmt::Display for WindowsServiceType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -81,7 +76,7 @@ impl fmt::Display for WindowsServiceType {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub enum WindowsStartType {
     /// Specifies a device driver that is loaded by the boot loader
     Boot,
@@ -91,6 +86,7 @@ pub enum WindowsStartType {
 
     /// Specifies a service that automatically starts each time the computer is restarted. Note
     /// that the service runs even if no one logs on to the computer
+    #[default]
     Auto,
 
     /// Specifies a service that must be started manually
@@ -99,12 +95,6 @@ pub enum WindowsStartType {
     /// Specifies a service that cannot be started. To start a disabled service, change the start
     /// type to some other value.
     Disabled,
-}
-
-impl Default for WindowsStartType {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 impl fmt::Display for WindowsStartType {
@@ -119,9 +109,10 @@ impl fmt::Display for WindowsStartType {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub enum WindowsErrorSeverity {
     /// Specifies that the error is logged. A message box is displayed, informing the user that a service has failed to start. Startup will continue
+    #[default]
     Normal,
 
     /// Specifies that the error is logged (if possible). The computer attempts to restart with the
@@ -137,12 +128,6 @@ pub enum WindowsErrorSeverity {
     /// Specifies that the error is logged and startup continues. No notification is given to the
     /// user beyond recording the error in the event log
     Ignore,
-}
-
-impl Default for WindowsErrorSeverity {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 impl fmt::Display for WindowsErrorSeverity {
@@ -181,7 +166,7 @@ impl ServiceManager for ScServiceManager {
         match which::which(SC_EXE) {
             Ok(_) => Ok(true),
             Err(which::Error::CannotFindBinaryPath) => Ok(false),
-            Err(x) => Err(io::Error::new(io::ErrorKind::Other, x)),
+            Err(x) => Err(io::Error::other(x)),
         }
     }
 
@@ -192,7 +177,9 @@ impl ServiceManager for ScServiceManager {
             RestartPolicy::Never => {
                 // This is fine, sc.exe services don't restart by default
             }
-            RestartPolicy::Always { .. } | RestartPolicy::OnFailure { .. } | RestartPolicy::OnSuccess { .. } => {
+            RestartPolicy::Always { .. }
+            | RestartPolicy::OnFailure { .. }
+            | RestartPolicy::OnSuccess { .. } => {
                 log::warn!(
                     "sc.exe does not support automatic restart policies through 'sc create'; service '{}' will not restart automatically. Use 'sc failure' to configure restart behavior manually.",
                     ctx.label.to_qualified_name()
@@ -287,19 +274,16 @@ impl ServiceManager for ScServiceManager {
                 // 1060 = The specified service does not exist as an installed service.
                 return Ok(crate::ServiceStatus::NotInstalled);
             }
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "Command failed with exit code {}: {}",
-                    output.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            ));
+            return Err(io::Error::other(format!(
+                "Command failed with exit code {}: {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let line = stdout.split('\n').find(|line| {
-            line.trim_matches(&['\r', ' '])
+            line.trim_matches(['\r', ' '])
                 .to_lowercase()
                 .starts_with("state")
         });

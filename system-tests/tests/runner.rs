@@ -1,4 +1,3 @@
-use assert_cmd::{crate_name, Command};
 use service_manager::*;
 use std::{
     ffi::OsString,
@@ -78,12 +77,12 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
     // Copy the service binary to a location where it can be accessed by a different user account
     // if need be.
     let temp_dir = shared_temp_dir();
-    let bin_path = assert_cmd::cargo::cargo_bin(crate_name!());
+    let bin_path = assert_cmd::cargo::cargo_bin!();
     let temp_bin_path = temp_dir.join(bin_path.file_name().unwrap());
     if temp_bin_path.exists() {
         std::fs::remove_file(temp_bin_path.clone()).unwrap();
     }
-    std::fs::copy(&bin_path, &temp_bin_path).unwrap();
+    std::fs::copy(bin_path, &temp_bin_path).unwrap();
 
     // Ensure service manager is available
     eprintln!("Checking if service available");
@@ -198,8 +197,7 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
 
     // Communicate with the service
     eprintln!("Talking to service");
-    Command::cargo_bin(crate_name!())
-        .unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!()
         .arg("talk")
         .arg(addr.to_string())
         .arg("hello world")
@@ -213,11 +211,8 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
         let res = manager.stop(ServiceStopCtx {
             label: service_label.clone(),
         });
-        if res.is_err() {
-            eprintln!(
-                "OpenRC stop is bugged in CI test, so skipping: {}",
-                res.unwrap_err()
-            );
+        if let Err(err) = res {
+            eprintln!("OpenRC stop is bugged in CI test, so skipping: {err}");
         }
     } else {
         manager
@@ -341,12 +336,12 @@ pub fn run_failure_restart_test(manager: impl Into<TypedServiceManager>, max_ret
     let service_label: ServiceLabel = "com.example.fail".parse().unwrap();
 
     let temp_dir = std::env::temp_dir();
-    let bin_path = assert_cmd::cargo::cargo_bin(crate_name!());
+    let bin_path = assert_cmd::cargo::cargo_bin!();
     let temp_bin_path = temp_dir.join(bin_path.file_name().unwrap());
     if temp_bin_path.exists() {
         std::fs::remove_file(temp_bin_path.clone()).unwrap();
     }
-    std::fs::copy(&bin_path, &temp_bin_path).unwrap();
+    std::fs::copy(bin_path, &temp_bin_path).unwrap();
 
     let log_file_path = temp_dir.join("service-manager-fail-test.log");
     if log_file_path.exists() {

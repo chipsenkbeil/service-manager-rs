@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reflect the true MSRV of 1.75.
 
+### Fixed
+
+- `LaunchdServiceManager::start` and `uninstall` at the user level return an error instead of
+  panicking when the home directory cannot be located.
+- `WinSwServiceManager::write_service_configuration` returns an error instead of panicking when
+  the configuration file cannot be created.
+
 ## [0.11.0] - 2026-02-18
 
 ### Changed
