@@ -23,7 +23,7 @@ following service management platforms:
 * [OpenRC](https://en.wikipedia.org/wiki/OpenRC) (Linux)
 * [rc.d](https://en.wikipedia.org/wiki/Init#Research_Unix-style/BSD-style) (FreeBSD)
 
-_Requires Rust `1.58.1` or higher!_
+_Requires Rust `1.75` or higher!_
 
 ## Installation
 
