@@ -13,7 +13,7 @@ serde_json = "1.0"
 service-manager = { path = ".." }
 
 [target.'cfg(windows)'.dependencies]
-windows-service = "0.5"
+windows-service = "0.8"
 
 [dev-dependencies]
 assert_cmd = "2.0"
