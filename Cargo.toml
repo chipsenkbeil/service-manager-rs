@@ -39,7 +39,6 @@ assert_fs = "1.0.13"
 indoc = "2.0.4"
 predicates = "3.0.4"
 
-# Package-level rather than workspace-level: system-tests panics and prints by design.
 [lints.rust]
 missing_debug_implementations = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }

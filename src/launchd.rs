@@ -107,8 +107,8 @@ impl ServiceManager for LaunchdServiceManager {
         let qualified_name = ctx.label.to_qualified_name();
         let plist_path = dir_path.join(format!("{}.plist", qualified_name));
         let plist = match ctx.contents {
-            Some(contents) => contents,
-            _ => make_plist(
+            Some(contents) => contents.into_bytes(),
+            _ => plist_to_xml(&make_plist(
                 &self.config.install,
                 &qualified_name,
                 ctx.cmd_iter(),
@@ -117,7 +117,7 @@ impl ServiceManager for LaunchdServiceManager {
                 ctx.environment.clone(),
                 ctx.autostart,
                 ctx.restart_policy,
-            )?,
+            ))?,
         };
 
         // Unload old service first if it exists
@@ -125,11 +125,7 @@ impl ServiceManager for LaunchdServiceManager {
             let _ = wrap_output(launchctl("remove", ctx.label.to_qualified_name().as_str())?);
         }
 
-        utils::write_file(
-            plist_path.as_path(),
-            plist.as_bytes(),
-            PLIST_FILE_PERMISSIONS,
-        )?;
+        utils::write_file(plist_path.as_path(), &plist, PLIST_FILE_PERMISSIONS)?;
 
         // Load the service.
         // Services with KeepAlive configured will have Disabled=true set, preventing auto-start
@@ -178,9 +174,11 @@ impl ServiceManager for LaunchdServiceManager {
                 dict.remove("Disabled");
             }
 
-            let mut buffer = Vec::new();
-            plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
-            utils::write_file(plist_path.as_path(), &buffer, PLIST_FILE_PERMISSIONS)?;
+            utils::write_file(
+                plist_path.as_path(),
+                &plist_to_xml(&plist)?,
+                PLIST_FILE_PERMISSIONS,
+            )?;
 
             let _ = launchctl("unload", plist_path.to_string_lossy().as_ref());
             wrap_output(launchctl("load", plist_path.to_string_lossy().as_ref())?)?;
@@ -308,7 +306,7 @@ fn make_plist<'a>(
     environment: Option<Vec<(String, String)>>,
     autostart: bool,
     restart_policy: RestartPolicy,
-) -> io::Result<String> {
+) -> Value {
     let mut dict = Dictionary::new();
 
     dict.insert("Label".to_string(), Value::String(label.to_string()));
@@ -428,9 +426,11 @@ fn make_plist<'a>(
         dict.insert("Disabled".to_string(), Value::Boolean(true));
     }
 
-    let plist = Value::Dictionary(dict);
+    Value::Dictionary(dict)
+}
 
+fn plist_to_xml(plist: &Value) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
     plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
-    String::from_utf8(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    Ok(buffer)
 }
