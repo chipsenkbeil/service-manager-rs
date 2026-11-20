@@ -120,7 +120,7 @@ impl WinSwServiceManager {
         ctx: &ServiceInstallCtx,
         config: &WinSwConfig,
     ) -> io::Result<()> {
-        let mut file = File::create(path).unwrap();
+        let mut file = File::create(path)?;
         if let Some(contents) = &ctx.contents {
             if Self::is_valid_xml(contents) {
                 file.write_all(contents.as_bytes())?;

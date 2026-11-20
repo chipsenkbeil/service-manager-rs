@@ -75,14 +75,14 @@ impl LaunchdServiceManager {
         }
     }
 
-    fn get_plist_path(&self, qualified_name: String) -> PathBuf {
+    fn get_plist_path(&self, qualified_name: String) -> io::Result<PathBuf> {
         let dir_path = if self.user {
-            user_agent_dir_path().unwrap()
+            user_agent_dir_path()?
         } else {
             global_daemon_dir_path()
         };
 
-        dir_path.join(format!("{}.plist", qualified_name))
+        Ok(dir_path.join(format!("{}.plist", qualified_name)))
     }
 }
 
@@ -117,7 +117,7 @@ impl ServiceManager for LaunchdServiceManager {
                 ctx.environment.clone(),
                 ctx.autostart,
                 ctx.restart_policy,
-            ),
+            )?,
         };
 
         // Unload old service first if it exists
@@ -141,7 +141,7 @@ impl ServiceManager for LaunchdServiceManager {
     }
 
     fn uninstall(&self, ctx: ServiceUninstallCtx) -> io::Result<()> {
-        let plist_path = self.get_plist_path(ctx.label.to_qualified_name());
+        let plist_path = self.get_plist_path(ctx.label.to_qualified_name())?;
         // Service might already be removed (if it has "KeepAlive")
         let _ = wrap_output(launchctl("remove", ctx.label.to_qualified_name().as_str())?);
         let _ = std::fs::remove_file(plist_path);
@@ -150,7 +150,7 @@ impl ServiceManager for LaunchdServiceManager {
 
     fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
         let qualified_name = ctx.label.to_qualified_name();
-        let plist_path = self.get_plist_path(qualified_name.clone());
+        let plist_path = self.get_plist_path(qualified_name.clone())?;
 
         if !plist_path.exists() {
             return Err(io::Error::new(
@@ -308,7 +308,7 @@ fn make_plist<'a>(
     environment: Option<Vec<(String, String)>>,
     autostart: bool,
     restart_policy: RestartPolicy,
-) -> String {
+) -> io::Result<String> {
     let mut dict = Dictionary::new();
 
     dict.insert("Label".to_string(), Value::String(label.to_string()));
@@ -431,6 +431,6 @@ fn make_plist<'a>(
     let plist = Value::Dictionary(dict);
 
     let mut buffer = Vec::new();
-    plist.to_writer_xml(&mut buffer).unwrap();
-    String::from_utf8(buffer).unwrap()
+    plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
+    String::from_utf8(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
