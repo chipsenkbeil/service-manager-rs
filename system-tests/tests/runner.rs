@@ -3,6 +3,7 @@ use service_manager::*;
 use std::{
     ffi::OsString,
     net::{SocketAddr, TcpListener},
+    path::PathBuf,
     thread,
     time::Duration,
 };
@@ -18,6 +19,16 @@ pub fn is_running_in_ci() -> bool {
 fn wait() {
     eprintln!("Waiting {}s before continuing", WAIT_PERIOD.as_secs_f32());
     thread::sleep(WAIT_PERIOD);
+}
+
+fn shared_temp_dir() -> PathBuf {
+    if cfg!(unix) {
+        // When running under `sudo` on macOS, this uses root's temp dir, as opposed to the
+        // "everyone-writable" /tmp.
+        PathBuf::from("/tmp")
+    } else {
+        std::env::temp_dir()
+    }
 }
 
 #[allow(dead_code)]
@@ -66,7 +77,7 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
 
     // Copy the service binary to a location where it can be accessed by a different user account
     // if need be.
-    let temp_dir = std::env::temp_dir();
+    let temp_dir = shared_temp_dir();
     let bin_path = assert_cmd::cargo::cargo_bin(crate_name!());
     let temp_bin_path = temp_dir.join(bin_path.file_name().unwrap());
     if temp_bin_path.exists() {
@@ -82,7 +93,7 @@ pub fn run_test(manager: &TypedServiceManager, username: Option<String>) -> Opti
         OsString::from("listen"),
         OsString::from(addr.to_string()),
         OsString::from("--log-file"),
-        std::env::temp_dir()
+        temp_dir
             .join(format!("{service_label}.log"))
             .into_os_string(),
     ];
@@ -445,7 +456,10 @@ pub fn run_failure_restart_test(manager: impl Into<TypedServiceManager>, max_ret
     // Read the log file and count start markers
     eprintln!("Checking log file for start markers");
     let log_contents = std::fs::read_to_string(&log_file_path).unwrap();
-    let start_count = log_contents.lines().filter(|l| l.contains("STARTED")).count();
+    let start_count = log_contents
+        .lines()
+        .filter(|l| l.contains("STARTED"))
+        .count();
     let expected_starts = (max_retries + 1) as usize;
     eprintln!(
         "Found {} STARTED markers (expected {})",
