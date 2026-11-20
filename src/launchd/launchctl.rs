@@ -115,27 +115,28 @@ impl From<LaunchCtlWaitError> for io::Error {
 /// Represents the state of the launchctl service.
 ///
 /// These are all exposed by `launchctl print`.
-pub enum ServiceState {
+pub(super) enum ServiceState {
     Spawning,
     XpcProxy,
     Running,
     Sigtermed,
     Sigkilled,
-    Other(String),
+    /// Any other state `launchctl print` reports.
+    Other,
 }
 
 impl ServiceState {
     /// Whether the service is currently booting up or not.
     ///
     /// After the service has booted up and is running, it will no longer return true for this.
-    pub fn is_booting(&self) -> bool {
+    pub(super) fn is_booting(&self) -> bool {
         matches!(self, ServiceState::Spawning | ServiceState::XpcProxy)
     }
 
     /// Whether the job has a process, counting one launchd has forked and is still exec'ing.
     ///
     /// Returns true either when the service is [`Self::is_booting`] or it's running.
-    pub fn is_running(&self) -> bool {
+    pub(super) fn is_running(&self) -> bool {
         matches!(
             self,
             ServiceState::Running | ServiceState::Spawning | ServiceState::XpcProxy
@@ -143,7 +144,7 @@ impl ServiceState {
     }
 
     /// Whether launchd has signalled the job to exit and has not reaped it yet.
-    pub fn is_stopping(&self) -> bool {
+    pub(super) fn is_stopping(&self) -> bool {
         matches!(self, ServiceState::Sigtermed | ServiceState::Sigkilled)
     }
 }
@@ -158,13 +159,13 @@ impl FromStr for ServiceState {
             "running" => ServiceState::Running,
             "SIGTERMed" => ServiceState::Sigtermed,
             "SIGKILLed" => ServiceState::Sigkilled,
-            other => ServiceState::Other(other.into()),
+            _ => ServiceState::Other,
         })
     }
 }
 
 /// The output of the `launchctl print` command.
-pub struct ServiceInfo {
+pub(super) struct ServiceInfo {
     /// The currently reported state of the service.
     pub state: ServiceState,
     /// How many runs the service had.
@@ -305,7 +306,7 @@ impl From<ServicePrintoutError> for io::Error {
 
 impl ServiceInfo {
     /// How long launchd can take to tear the job down once it has been signalled.
-    pub fn teardown_timeout(&self) -> Duration {
+    pub(super) fn teardown_timeout(&self) -> Duration {
         // launchd SIGKILLs a job still running ExitTimeOut after its SIGTERM, then needs a
         // moment to reap it. launchd.plist(5) calls an ExitTimeOut of 0 infinite, so that wait
         // gets a fixed bound.
@@ -421,24 +422,24 @@ impl LaunchCtl {
 
     /// `launchctl` exit codes for a service that is not loaded: `ESRCH` from `bootout`, then
     /// "Could not find specified domain" and "Could not find specified service".
-    pub const NOT_LOADED: [i32; 3] = [3, 112, 113];
+    pub(super) const NOT_LOADED: [i32; 3] = [3, 112, 113];
 
     /// `launchctl` exit code for "Could not find specified domain", such as `gui/<uid>` for a user
     /// with no graphical login.
-    pub const DOMAIN_NOT_FOUND: i32 = 112;
+    pub(super) const DOMAIN_NOT_FOUND: i32 = 112;
 
     /// `launchctl` exit code for `EPERM`, which a non-root caller gets for the `system` domain.
-    pub const EPERM: i32 = 1;
+    pub(super) const EPERM: i32 = 1;
 
     /// `launchctl bootout` exit code for `EINPROGRESS`, returned while the job is still exiting.
-    pub const EINPROGRESS: i32 = 36;
+    pub(super) const EINPROGRESS: i32 = 36;
 
-    pub fn available() -> bool {
+    pub(super) fn available() -> bool {
         Path::new(Self::LAUNCHCTL_PATH).exists()
     }
 
     /// `launchctl bootstrap [service-path service-path2 ...]`
-    pub fn bootstrap_plists(
+    pub(super) fn bootstrap_plists(
         domain: &str,
         plists: impl Iterator<Item = impl AsRef<OsStr>>,
     ) -> io::Result<process::Output> {
@@ -455,7 +456,10 @@ impl LaunchCtl {
     /// block the active thread until the requested service is booted out.
     ///
     /// Fails with [`LaunchCtlBootoutError::NotLoaded`] when the service is not loaded.
-    pub fn bootout(service_target: &str, timeout: Duration) -> Result<(), LaunchCtlBootoutError> {
+    pub(super) fn bootout(
+        service_target: &str,
+        timeout: Duration,
+    ) -> Result<(), LaunchCtlBootoutError> {
         let procedure_start_time = Instant::now();
 
         const BOOTUP_TIMEOUT: Duration = Duration::from_secs(1);
@@ -505,7 +509,7 @@ impl LaunchCtl {
     }
 
     /// `launchctl kickstart service-target`
-    pub fn kickstart(service_target: &str) -> io::Result<process::Output> {
+    pub(super) fn kickstart(service_target: &str) -> io::Result<process::Output> {
         Self::start().arg("kickstart").arg(service_target).output()
     }
 
@@ -516,7 +520,7 @@ impl LaunchCtl {
     /// **Warning**: Apple explicitly documents this API as not being stable and safe to use, but
     /// unfortunately, I couldn't find a different, more appropriate API. We use this API, but we
     /// keep the surface of what we read very minimal.
-    pub fn print_service(
+    pub(super) fn print_service(
         service_target: &str,
     ) -> Result<Option<ServiceInfo>, ServicePrintoutError> {
         let output = Self::start()
@@ -541,7 +545,7 @@ impl LaunchCtl {
     /// `timeout` passes.
     ///
     /// Returns the last info read, `None` meaning the service is not loaded.
-    pub fn wait_until(
+    pub(super) fn wait_until(
         service_target: &str,
         timeout: Duration,
         done: impl Fn(&ServiceInfo) -> bool,

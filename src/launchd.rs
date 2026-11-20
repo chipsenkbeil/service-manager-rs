@@ -198,17 +198,11 @@ struct ServiceTarget {
 
 impl ServiceTarget {
     /// The service `name` in `domain`.
-    pub fn new(domain: LaunchdServiceDomain, name: &ServiceName) -> Self {
-        use std::fmt::Write as _;
-
-        // The longest domain is `user/4294967295`.
-        const MAX_DOMAIN_LEN: usize = 15;
-
+    pub(crate) fn new(domain: LaunchdServiceDomain, name: &ServiceName) -> Self {
         let name = name.as_ref();
-        let mut service_target = String::with_capacity(MAX_DOMAIN_LEN + 1 + name.len());
-        write!(service_target, "{domain}").expect("LaunchdServiceDomain's Display never fails");
-
+        let mut service_target = domain.to_string();
         let separator = service_target.len();
+        service_target.reserve(1 + name.len());
         service_target.push('/');
         service_target.push_str(name);
 
@@ -220,17 +214,17 @@ impl ServiceTarget {
     }
 
     /// The domain half of the service target, such as `gui/501`.
-    pub fn domain_target(&self) -> &str {
+    pub(crate) fn domain_target(&self) -> &str {
         &self.service_target[..self.separator]
     }
 
     /// The service's label.
-    pub fn label(&self) -> &str {
+    pub(crate) fn label(&self) -> &str {
         &self.service_target[self.separator + 1..]
     }
 
     /// The plist launchd loads the service from.
-    pub fn plist_path(&self) -> io::Result<PathBuf> {
+    pub(crate) fn plist_path(&self) -> io::Result<PathBuf> {
         Ok(self
             .domain
             .plist_dir()?
@@ -238,14 +232,14 @@ impl ServiceTarget {
     }
 
     /// The service's info, or `None` when it is not loaded.
-    pub fn info(&self) -> Result<Option<ServiceInfo>, ServicePrintoutError> {
+    pub(crate) fn info(&self) -> Result<Option<ServiceInfo>, ServicePrintoutError> {
         LaunchCtl::print_service(&self.service_target)
     }
 
     /// Polls the service's info until `done` holds or the service is not loaded.
     ///
     /// See [`LaunchCtl::wait_until`].
-    pub fn wait_until(
+    pub(crate) fn wait_until(
         &self,
         timeout: Duration,
         done: impl Fn(&ServiceInfo) -> bool,
@@ -254,7 +248,7 @@ impl ServiceTarget {
     }
 
     /// Loads the plist at `plist_path` into the service's domain.
-    pub fn bootstrap(&self, plist_path: &Path) -> io::Result<()> {
+    pub(crate) fn bootstrap(&self, plist_path: &Path) -> io::Result<()> {
         LaunchCtl::bootstrap_plists(self.domain_target(), std::iter::once(plist_path))?;
         Ok(())
     }
@@ -262,12 +256,12 @@ impl ServiceTarget {
     /// Removes the service from its domain and waits for launchd to finish tearing it down.
     ///
     /// See [`LaunchCtl::bootout`].
-    pub fn bootout(&self, timeout: Duration) -> Result<(), LaunchCtlBootoutError> {
+    pub(crate) fn bootout(&self, timeout: Duration) -> Result<(), LaunchCtlBootoutError> {
         LaunchCtl::bootout(&self.service_target, timeout)
     }
 
     /// Boots the service out, counting a service that was not loaded as booted out.
-    pub fn bootout_if_loaded(&self) -> io::Result<()> {
+    pub(crate) fn bootout_if_loaded(&self) -> io::Result<()> {
         match self.bootout(BOOTOUT_TIMEOUT) {
             Ok(()) | Err(LaunchCtlBootoutError::NotLoaded) => Ok(()),
             Err(err) => Err(err.into()),
@@ -275,13 +269,13 @@ impl ServiceTarget {
     }
 
     /// Starts the loaded service.
-    pub fn kickstart(&self) -> io::Result<()> {
+    pub(crate) fn kickstart(&self) -> io::Result<()> {
         LaunchCtl::kickstart(&self.service_target)?;
         Ok(())
     }
 
     /// The service's status as [`ServiceManager::status`] reports it.
-    pub fn status(&self) -> io::Result<crate::ServiceStatus> {
+    pub(crate) fn status(&self) -> io::Result<crate::ServiceStatus> {
         let info = match self.info() {
             Ok(info) => info,
             // With no graphical login the job cannot run, but launchd loads its plist at the next
@@ -312,17 +306,11 @@ pub struct LaunchdConfig {
 }
 
 /// Configuration settings tied to launchd services during installation
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct LaunchdInstallConfig {
     /// Launchd-specific keep-alive setting. If `Some`, this takes precedence over the generic
     /// `RestartPolicy` in `ServiceInstallCtx`. If `None`, the generic policy is used.
     pub keep_alive: Option<bool>,
-}
-
-impl Default for LaunchdInstallConfig {
-    fn default() -> Self {
-        Self { keep_alive: None }
-    }
 }
 
 /// Implementation of [`ServiceManager`] for MacOS's [Launchd](https://en.wikipedia.org/wiki/Launchd)
@@ -399,8 +387,8 @@ impl ServiceManager for LaunchdServiceManager {
         std::fs::create_dir_all(self.plist_dir()?)?;
 
         let plist = match ctx.contents {
-            Some(contents) => contents,
-            _ => make_plist(
+            Some(contents) => contents.into_bytes(),
+            _ => plist_to_xml(&make_plist(
                 &self.config.install,
                 target.label(),
                 ctx.cmd_iter(),
@@ -409,21 +397,17 @@ impl ServiceManager for LaunchdServiceManager {
                 ctx.environment.clone(),
                 ctx.autostart,
                 ctx.restart_policy,
-            ),
+            ))?,
         };
 
         let plist_path = target.plist_path()?;
         target.bootout_if_loaded()?;
-        utils::write_file(
-            plist_path.as_path(),
-            plist.as_bytes(),
-            PLIST_FILE_PERMISSIONS,
-        )?;
+        utils::write_file(plist_path.as_path(), &plist, PLIST_FILE_PERMISSIONS)?;
 
         // bootstrap refuses a plist that sets Disabled, which make_plist does for KeepAlive
         // services so that installing one does not start it. start() lifts it. A plist that does
         // not parse counts as not disabled, and bootstrap reports it.
-        let disabled = Value::from_reader(io::Cursor::new(plist.as_bytes()))
+        let disabled = Value::from_reader(io::Cursor::new(&plist))
             .ok()
             .and_then(Value::into_dictionary)
             .and_then(|dict| dict.get("Disabled").and_then(Value::as_boolean))
@@ -504,8 +488,7 @@ impl ServiceManager for LaunchdServiceManager {
             .and_then(|disabled| disabled.as_boolean())
             == Some(true);
         if was_disabled {
-            let mut buffer = Vec::new();
-            plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
+            let buffer = plist_to_xml(&plist)?;
             // Not created afresh, so a plist a concurrent uninstall() removed stays removed.
             let mut file = OpenOptions::new()
                 .write(true)
@@ -574,6 +557,7 @@ fn not_installed(label: &ServiceLabel) -> io::Error {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_plist<'a>(
     config: &LaunchdInstallConfig,
     label: &str,
@@ -583,7 +567,7 @@ fn make_plist<'a>(
     environment: Option<Vec<(String, String)>>,
     autostart: bool,
     restart_policy: RestartPolicy,
-) -> String {
+) -> Value {
     let mut dict = Dictionary::new();
 
     dict.insert("Label".to_string(), Value::String(label.to_string()));
@@ -703,11 +687,13 @@ fn make_plist<'a>(
         dict.insert("Disabled".to_string(), Value::Boolean(true));
     }
 
-    let plist = Value::Dictionary(dict);
+    Value::Dictionary(dict)
+}
 
+fn plist_to_xml(plist: &Value) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
-    plist.to_writer_xml(&mut buffer).unwrap();
-    String::from_utf8(buffer).unwrap()
+    plist.to_writer_xml(&mut buffer).map_err(io::Error::other)?;
+    Ok(buffer)
 }
 
 #[cfg(test)]
