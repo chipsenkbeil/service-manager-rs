@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reflect the true MSRV of 1.75.
 - Depend on `which` 8.
+- Depend on `encoding_rs` and `encoding-utils` only on Windows; elsewhere the `encoding` feature
+  decodes command output as UTF-8 with the standard library.
 - Stop enabling `plist`'s default `serde` feature.
 
 ### Fixed
