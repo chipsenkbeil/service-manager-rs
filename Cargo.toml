@@ -36,6 +36,9 @@ xml = "1"
 encoding_rs = { version = "0.8", optional = true }
 encoding-utils = { version = "0.1", optional = true }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 assert_fs = "1"
 indoc = "2"
@@ -45,7 +48,7 @@ predicates = "3"
 missing_debug_implementations = "warn"
 rust_2018_idioms = { level = "warn", priority = -1 }
 unreachable_pub = "warn"
-unsafe_code = "forbid"
+unsafe_code = "deny"
 
 [lints.clippy]
 dbg_macro = "warn"

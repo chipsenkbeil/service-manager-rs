@@ -791,6 +791,7 @@ dependencies = [
  "encoding-utils",
  "encoding_rs",
  "indoc",
+ "libc",
  "log",
  "plist",
  "predicates",
