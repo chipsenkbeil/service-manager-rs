@@ -70,18 +70,16 @@ pub(crate) fn wrap_output(output: Output) -> std::io::Result<Output> {
 
 #[cfg(feature = "encoding")]
 pub(crate) mod encoding {
-    use encoding_rs::UTF_8;
-    #[cfg(windows)]
-    use encoding_utils::windows::current_acp_encoding_no_replacement;
     use std::borrow::Cow;
     use std::io::{Error, ErrorKind};
-    /// probe the encoding of a bytes slice, and decode it to a string(utf-8)
-    pub(crate) fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
-        #[cfg(windows)]
-        let encoding = current_acp_encoding_no_replacement().unwrap_or(UTF_8);
-        #[cfg(not(windows))]
-        let encoding = &UTF_8;
 
+    /// Decode command output in the active code page, falling back to UTF-8.
+    #[cfg(windows)]
+    pub(crate) fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
+        use encoding_rs::UTF_8;
+        use encoding_utils::windows::current_acp_encoding_no_replacement;
+
+        let encoding = current_acp_encoding_no_replacement().unwrap_or(UTF_8);
         let (result, _, had_errors) = encoding.decode(bytes);
         if had_errors {
             Err(Error::new(
@@ -91,5 +89,13 @@ pub(crate) mod encoding {
         } else {
             Ok(result)
         }
+    }
+
+    /// Decode command output as UTF-8.
+    #[cfg(not(windows))]
+    pub(crate) fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
+        std::str::from_utf8(bytes)
+            .map(Cow::Borrowed)
+            .map_err(|err| Error::new(ErrorKind::InvalidData, err))
     }
 }

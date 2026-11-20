@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Reflect the true MSRV of 1.75.
+- Depend on `which` 8.
+- Depend on `xml` 1, the new name of `xml-rs`.
+- Depend on `encoding_rs` and `encoding-utils` only on Windows.
+- Stop enabling `plist`'s default `serde` feature.
+- Improve compatibility with more dependency versions.
 
 ### Fixed
 

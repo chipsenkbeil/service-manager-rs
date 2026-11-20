@@ -156,7 +156,7 @@ impl ServiceManager for LaunchdServiceManager {
         }
 
         let plist_data = std::fs::read(&plist_path)?;
-        let mut plist: Value = plist::from_reader(std::io::Cursor::new(plist_data))
+        let mut plist = Value::from_reader(std::io::Cursor::new(plist_data))
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         let is_disabled = if let Value::Dictionary(ref dict) = plist {
             dict.get("Disabled")
